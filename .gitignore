@@ -1,0 +1,16 @@
+# Alles ignorieren
+/*
+
+# Assets-Ordner selbst nicht ignorieren, damit wir Unterordner freigeben können
+!Assets/
+
+Assets/*
+# Nur den RuntimeChangesSaver-Ordner im Assets-Ordner nicht ignorieren
+!Assets/RuntimeChangesSaver/
+!Assets/RuntimeChangesSaver/**
+!README.md
+!LICENSE
+!.gitignore
+# Alles andere in Assets ignorieren
+
+
