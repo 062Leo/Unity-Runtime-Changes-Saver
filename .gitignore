@@ -1,7 +1,7 @@
 # Alles ignorieren
 /*
 
-# Assets-Ordner selbst nicht ignorieren, damit wir Unterordner freigeben können
+# Assets-Ordner selbst nicht ignorieren, damit wir Unterordner freigeben kï¿½nnen
 !Assets/
 
 Assets/*
@@ -14,3 +14,5 @@ Assets/*
 # Alles andere in Assets ignorieren
 
 
+Assets/RuntimeChangesSaver/Skripts/PlayModeTransformChangesStore.asset
+Assets/RuntimeChangesSaver/Skripts/PlayModeTransformChangesStore.asset.meta
