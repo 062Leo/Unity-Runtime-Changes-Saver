@@ -1,6 +1,7 @@
 ﻿using UnityEngine;
 using UnityEditor;
 using System.Collections.Generic;
+using System.IO;
 
 /// <summary>
 /// Speichert Transform/RectTransform-Änderungen zwischen Play Mode und Edit Mode.
@@ -32,18 +33,48 @@ public class PlayModeTransformChangesStore : ScriptableObject
 
     public List<TransformChange> changes = new List<TransformChange>();
 
-    private const string AssetPath = "Assets/01_Skripts/Editor/PlayModeTransformChangesStore.asset";
+    public static PlayModeTransformChangesStore LoadExisting()
+    {
+        // Versuche, ein bereits existierendes Asset des Typs zu finden – egal wo es liegt.
+        string[] guids = AssetDatabase.FindAssets("t:PlayModeTransformChangesStore");
+        if (guids != null && guids.Length > 0)
+        {
+            string path = AssetDatabase.GUIDToAssetPath(guids[0]);
+            return AssetDatabase.LoadAssetAtPath<PlayModeTransformChangesStore>(path);
+        }
+
+        return null;
+    }
 
     public static PlayModeTransformChangesStore LoadOrCreate()
     {
-        var store = AssetDatabase.LoadAssetAtPath<PlayModeTransformChangesStore>(AssetPath);
+        var store = LoadExisting();
         if (store == null)
         {
+            string assetPath = GetDefaultAssetPath();
             store = ScriptableObject.CreateInstance<PlayModeTransformChangesStore>();
-            AssetDatabase.CreateAsset(store, AssetPath);
+            AssetDatabase.CreateAsset(store, assetPath);
             AssetDatabase.SaveAssets();
         }
         return store;
+    }
+
+    private static string GetDefaultAssetPath()
+    {
+        // Standardpfad: gleiche Ordnerstruktur wie das Skript selbst,
+        // damit ein verschobenes UnityPackage weiterhin funktioniert.
+        var tempInstance = ScriptableObject.CreateInstance<PlayModeTransformChangesStore>();
+        MonoScript script = MonoScript.FromScriptableObject(tempInstance);
+        string scriptPath = AssetDatabase.GetAssetPath(script);
+        ScriptableObject.DestroyImmediate(tempInstance);
+
+        string directory = string.IsNullOrEmpty(scriptPath)
+            ? "Assets"
+            : Path.GetDirectoryName(scriptPath);
+
+        string assetPath = Path.Combine(directory, "PlayModeTransformChangesStore.asset");
+        // Unity erwartet Vorwärts-Slashes.
+        return assetPath.Replace("\\", "/");
     }
 
     public void Clear()
