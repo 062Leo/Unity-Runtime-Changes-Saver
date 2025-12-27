@@ -121,14 +121,20 @@ internal class PlayModeOverridesPopup : PopupWindowContent
         labelRect.xMin += 16f; // Einrückung wie bei einem TreeView-Item
         GUI.Label(labelRect, "Transform", EditorStyles.label);
 
-        // Klick auf die Zeile öffnet ein Vergleichs-Popup links daneben.
+        // Klick auf die Zeile öffnet das DualInspectorWindow nur für den Transform-Component.
         if (Event.current.type == EventType.MouseDown && rowRect.Contains(Event.current.mousePosition))
         {
             if (Event.current.button == 0)
             {
                 Event.current.Use();
-                var popupRect = new Rect(rowRect.xMax, rowRect.y, 350f, 260f);
-                PopupWindow.Show(popupRect, new TransformComparisonDemoPopup());
+                if (_gameObject != null)
+                {
+                    var transform = _gameObject.transform;
+                    if (transform != null)
+                    {
+                        DualInspectorWindow.ShowForComponent(transform);
+                    }
+                }
             }
         }
     }

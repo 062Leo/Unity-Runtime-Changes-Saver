@@ -73,8 +73,7 @@ public class PlayModeChangesInspector
             Rect buttonRect = GUILayoutUtility.GetRect(buttonContent, EditorStyles.miniButton, GUILayout.Width(140f));
             if (GUI.Button(buttonRect, buttonContent, EditorStyles.miniButton))
             {
-                Rect screenRect = GUIUtility.GUIToScreenRect(buttonRect);
-                PopupWindow.Show(screenRect, new PlayModeOverridesPopup(go, id, original, current, changes));
+                PlayModeOverridesWindow.Open(go, id, original, current, changes);
             }
         }
         GUILayout.FlexibleSpace();

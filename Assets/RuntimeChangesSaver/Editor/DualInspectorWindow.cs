@@ -7,6 +7,10 @@ public class DualInspectorWindow : EditorWindow
     private GameObject targetGO;
     private GameObject snapshotGO;
 
+    private bool singleComponentMode;
+    private Component singleTargetComponent;
+    private Component singleSnapshotComponent;
+
     private readonly List<Editor> leftEditors = new();
     private readonly List<Editor> rightEditors = new();
 
@@ -47,6 +51,13 @@ public class DualInspectorWindow : EditorWindow
 
     void Rebuild()
     {
+        if (singleComponentMode)
+        {
+            if (singleTargetComponent != null)
+                BuildForSingleComponent(singleTargetComponent);
+            return;
+        }
+
         Cleanup();
 
         targetGO = Selection.activeGameObject;
@@ -58,6 +69,51 @@ public class DualInspectorWindow : EditorWindow
 
         BuildEditors(snapshotGO, leftEditors);
         BuildEditors(targetGO, rightEditors);
+
+        sharedScroll = Vector2.zero;
+        Repaint();
+    }
+
+    public static void ShowForComponent(Component component)
+    {
+        if (component == null)
+            return;
+
+        var window = GetWindow<DualInspectorWindow>("Dual Inspector");
+        window.singleComponentMode = true;
+        window.singleTargetComponent = component;
+        window.BuildForSingleComponent(component);
+        window.Focus();
+    }
+
+    void BuildForSingleComponent(Component component)
+    {
+        Cleanup();
+
+        singleTargetComponent = component;
+        targetGO = component != null ? component.gameObject : null;
+
+        if (targetGO == null || component == null)
+            return;
+
+        snapshotGO = Instantiate(targetGO);
+        snapshotGO.hideFlags = HideFlags.HideAndDontSave;
+
+        var type = component.GetType();
+        var targetComponents = targetGO.GetComponents(type);
+        var snapshotComponents = snapshotGO.GetComponents(type);
+        int index = System.Array.IndexOf(targetComponents, component);
+
+        singleSnapshotComponent = null;
+        if (index >= 0 && index < snapshotComponents.Length)
+        {
+            singleSnapshotComponent = snapshotComponents[index];
+        }
+
+        if (singleSnapshotComponent != null)
+            leftEditors.Add(Editor.CreateEditor(singleSnapshotComponent));
+
+        rightEditors.Add(Editor.CreateEditor(component));
 
         sharedScroll = Vector2.zero;
         Repaint();
