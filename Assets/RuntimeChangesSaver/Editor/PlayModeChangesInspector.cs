@@ -8,9 +8,12 @@ using System.Collections.Generic;
 [InitializeOnLoad]
 public class PlayModeChangesInspector
 {
+    private static Dictionary<int, bool> foldoutStates = new Dictionary<int, bool>();
+    private static Dictionary<int, bool> componentDetailStates = new Dictionary<int, bool>();
+
     static PlayModeChangesInspector()
     {
-        // Nach dem Standard-Header von Unity zeichnen, gleich wie Prefab Overrides
+        // Nach dem St andard-Header von Unity zeichnen, gleich wie Prefab Overrides
         Editor.finishedDefaultHeaderGUI += OnPostHeaderGUI;
     }
 
@@ -43,7 +46,7 @@ public class PlayModeChangesInspector
         TransformSnapshot original = PlayModeChangesTracker.GetSnapshot(id);
         TransformSnapshot current = null;
         List<string> changes = null;
- 
+
         // Falls aus irgendeinem Grund beim Play-Start kein Snapshot existiert,
         // legen wir beim ersten Aufruf einen Basis-Snapshot an.
         if (original == null)
@@ -55,115 +58,403 @@ public class PlayModeChangesInspector
         current = new TransformSnapshot(go);
         changes = PlayModeChangesTracker.GetChangedProperties(original, current);
 
-        // Panel direkt im Header zeichnen
         DrawPlayModeOverridesHeader(go, id, original, current, changes);
     }
 
     private static void DrawPlayModeOverridesHeader(GameObject go, int id, TransformSnapshot original, TransformSnapshot current, List<string> changes)
     {
-        // Exakt wie Prefab Override Header
         EditorGUILayout.BeginVertical("HelpBox");
 
         EditorGUILayout.BeginHorizontal();
-        GUILayout.Label("Play Mode Overrides", EditorStyles.boldLabel);
-        GUILayout.FlexibleSpace();
-
         bool hasChanges = changes != null && changes.Count > 0;
-        bool canMarkOrUnmark = Application.isPlaying && hasChanges && go != null;
+        bool expanded = GetFoldoutState(id);
+        expanded = EditorGUILayout.Foldout(expanded, "PlayModeChanges", true);
+        SetFoldoutState(id, expanded);
 
-        // Buttons deaktivieren, wenn nichts zum Markieren ist
-        using (new EditorGUI.DisabledScope(!canMarkOrUnmark))
-        {
-            if (GUILayout.Button("Unmark All", EditorStyles.miniButtonLeft, GUILayout.Width(80)))
-            {
-                PlayModeChangesTracker.RevertAll(id);
-            }
-
-            if (GUILayout.Button("Mark All", EditorStyles.miniButtonRight, GUILayout.Width(80)))
-            {
-                PlayModeChangesTracker.ApplyAll(id, go);
-            }
-        }
+        GUILayout.FlexibleSpace();
 
         EditorGUILayout.EndHorizontal();
 
+        if (!expanded)
+        {
+            EditorGUILayout.EndVertical();
+            EditorGUILayout.Space(10);
+            return;
+        }
+
         EditorGUILayout.Space(2);
 
-        // Info-Text / Property Liste
+        EditorGUILayout.LabelField("Review, Revert or Apply In-Game Changes", EditorStyles.miniLabel);
+        EditorGUILayout.Space(4);
+
         if (!hasChanges)
         {
             EditorGUILayout.LabelField("Keine Änderungen.", EditorStyles.miniLabel);
         }
         else
         {
-            // Property Liste genau wie Prefab Overrides
-            foreach (string property in changes)
-            {
-                DrawPropertyOverride(id, original, current, property);
-            }
+            DrawComponentListAndDetails(go, id, original, current, changes);
         }
 
-        // Apply-Button am Ende: schreibt alle markierten Änderungen ins ScriptableObject
-        bool anySelected = false;
-        if (hasChanges)
-        {
-            foreach (var prop in changes)
-            {
-                if (PlayModeChangesTracker.IsPropertySelected(id, prop))
-                {
-                    anySelected = true;
-                    break;
-                }
-            }
-        }
+        bool canApplyOrRevertAll = Application.isPlaying && hasChanges && go != null;
 
-        using (new EditorGUI.DisabledScope(!anySelected || go == null))
+        EditorGUILayout.Space(4);
+
+        EditorGUILayout.BeginHorizontal();
+        GUILayout.FlexibleSpace();
+        using (new EditorGUI.DisabledScope(!canApplyOrRevertAll))
         {
-            if (GUILayout.Button("Apply", GUILayout.Width(80)))
+            if (GUILayout.Button("Revert All", EditorStyles.miniButtonLeft, GUILayout.Width(90)))
             {
+                RevertTransform(go.transform, original, changes);
+            }
+
+            if (GUILayout.Button("Apply All", EditorStyles.miniButtonRight, GUILayout.Width(90)))
+            {
+                PlayModeChangesTracker.ApplyAll(id, go);
                 PlayModeChangesTracker.PersistSelectedChangesForAll();
             }
         }
+        EditorGUILayout.EndHorizontal();
 
         EditorGUILayout.EndVertical();
 
         EditorGUILayout.Space(10);
     }
 
-    private static void DrawPropertyOverride(int id, TransformSnapshot original, TransformSnapshot current, string property)
+    private static bool GetFoldoutState(int id)
+    {
+        bool state;
+        if (!foldoutStates.TryGetValue(id, out state))
+        {
+            state = false;
+            foldoutStates[id] = state;
+        }
+        return state;
+    }
+
+    private static void SetFoldoutState(int id, bool state)
+    {
+        foldoutStates[id] = state;
+    }
+
+    private static bool GetComponentDetailState(int id)
+    {
+        bool state;
+        if (!componentDetailStates.TryGetValue(id, out state))
+        {
+            state = false;
+            componentDetailStates[id] = state;
+        }
+        return state;
+    }
+
+    private static void SetComponentDetailState(int id, bool state)
+    {
+        componentDetailStates[id] = state;
+    }
+
+    private static void DrawComponentListAndDetails(GameObject go, int id, TransformSnapshot original, TransformSnapshot current, List<string> changes)
+    {
+        EditorGUILayout.BeginVertical();
+
+        // Aktuell tracken wir nur Transform/RectTransform, daher genau eine Component-Zeile
+        Transform component = go.transform;
+        System.Type componentType = original.isRectTransform ? typeof(RectTransform) : typeof(Transform);
+        GUIContent content = EditorGUIUtility.ObjectContent(component, componentType);
+        content.text = original.isRectTransform ? "Rect Transform" : "Transform";
+
+        Rect rowRect = EditorGUILayout.GetControlRect(false, EditorGUIUtility.singleLineHeight);
+        if (GUI.Button(rowRect, GUIContent.none, GUIStyle.none))
+        {
+            bool currentState = GetComponentDetailState(id);
+            SetComponentDetailState(id, !currentState);
+        }
+
+        // Icon + Text in der Zeile zeichnen
+        Rect iconRect = new Rect(rowRect.x, rowRect.y, 18, rowRect.height);
+        Rect labelRect = new Rect(rowRect.x + 20, rowRect.y, rowRect.width - 20, rowRect.height);
+        if (content.image != null)
+            GUI.Label(iconRect, content.image);
+        GUI.Label(labelRect, content.text);
+
+        bool showDetails = GetComponentDetailState(id);
+
+        if (showDetails)
+        {
+            EditorGUILayout.Space(4);
+            DrawTransformBeforeAfter(go, id, original, current, changes);
+        }
+
+        EditorGUILayout.EndVertical();
+    }
+
+    private static void DrawTransformBeforeAfter(GameObject go, int id, TransformSnapshot original, TransformSnapshot current, List<string> changes)
     {
         EditorGUILayout.BeginHorizontal();
 
-        // Checkbox für Selektion
-        bool isSelected = PlayModeChangesTracker.IsPropertySelected(id, property);
-        bool newSelected = EditorGUILayout.Toggle(isSelected, GUILayout.Width(14));
-
-        if (newSelected != isSelected)
+        // Left: Before (read-only)
+        EditorGUILayout.BeginVertical();
+        EditorGUILayout.LabelField("Before", EditorStyles.boldLabel);
+        using (new EditorGUI.DisabledScope(true))
         {
-            PlayModeChangesTracker.ToggleProperty(id, property);
+            DrawTransformSnapshotGUI(original, changes);
         }
+        EditorGUILayout.EndVertical();
 
-        // Property Label mit Icon (genau wie Prefab Override)
-        GUIContent label = new GUIContent(GetPropertyDisplayName(property), GetPropertyTooltip(property, original, current));
+        EditorGUILayout.Space(10);
 
-        // Blau highlighting für Modified Properties
-        if (isSelected)
-        {
-            GUI.contentColor = new Color(0.3f, 0.6f, 1f);
-        }
-
-        EditorGUILayout.LabelField(label, EditorStyles.label);
-
-        GUI.contentColor = Color.white;
-
+        // Right: After (editable)
+        EditorGUILayout.BeginVertical();
+        EditorGUILayout.BeginHorizontal();
+        EditorGUILayout.LabelField("After", EditorStyles.boldLabel);
         GUILayout.FlexibleSpace();
+        if (GUILayout.Button("Revert", GUILayout.Width(70)))
+        {
+            RevertTransform(go.transform, original, changes);
+        }
+        if (GUILayout.Button("Apply", GUILayout.Width(70)))
+        {
+            PlayModeChangesTracker.ApplyAll(id, go);
+            PlayModeChangesTracker.PersistSelectedChangesForAll();
+        }
+        EditorGUILayout.EndHorizontal();
 
-        // Werte Anzeige
-        string valueDisplay = GetValueDisplay(property, current);
+        DrawTransformCurrentGUI(go.transform, changes);
 
-        EditorGUILayout.LabelField(valueDisplay, EditorStyles.miniLabel, GUILayout.Width(150));
+        EditorGUILayout.EndVertical();
 
         EditorGUILayout.EndHorizontal();
+    }
+
+    private static void RevertTransform(Transform transform, TransformSnapshot original, List<string> changedProps)
+    {
+        if (transform == null || original == null || changedProps == null)
+            return;
+
+        RectTransform rt = transform as RectTransform;
+
+        foreach (string prop in changedProps)
+        {
+            switch (prop)
+            {
+                case "position":
+                    transform.localPosition = original.position;
+                    break;
+                case "rotation":
+                    transform.localRotation = original.rotation;
+                    break;
+                case "scale":
+                    transform.localScale = original.scale;
+                    break;
+                case "anchoredPosition":
+                    if (rt) rt.anchoredPosition = original.anchoredPosition;
+                    break;
+                case "anchoredPosition3D":
+                    if (rt) rt.anchoredPosition3D = original.anchoredPosition3D;
+                    break;
+                case "anchorMin":
+                    if (rt) rt.anchorMin = original.anchorMin;
+                    break;
+                case "anchorMax":
+                    if (rt) rt.anchorMax = original.anchorMax;
+                    break;
+                case "pivot":
+                    if (rt) rt.pivot = original.pivot;
+                    break;
+                case "sizeDelta":
+                    if (rt) rt.sizeDelta = original.sizeDelta;
+                    break;
+                case "offsetMin":
+                    if (rt) rt.offsetMin = original.offsetMin;
+                    break;
+                case "offsetMax":
+                    if (rt) rt.offsetMax = original.offsetMax;
+                    break;
+            }
+        }
+    }
+
+    private static void DrawTransformSnapshotGUI(TransformSnapshot snapshot, List<string> changedProps)
+    {
+        if (snapshot == null)
+            return;
+
+        bool positionChanged = changedProps.Contains("position");
+        bool rotationChanged = changedProps.Contains("rotation");
+        bool scaleChanged = changedProps.Contains("scale");
+
+        Color oldColor = GUI.color;
+
+        if (positionChanged)
+            GUI.color = new Color(0.3f, 0.6f, 1f);
+        EditorGUILayout.Vector3Field("Position", snapshot.position);
+        GUI.color = oldColor;
+
+        if (rotationChanged)
+            GUI.color = new Color(0.3f, 0.6f, 1f);
+        Vector3 beforeEuler = snapshot.rotation.eulerAngles;
+        EditorGUILayout.Vector3Field("Rotation", beforeEuler);
+        GUI.color = oldColor;
+
+        if (scaleChanged)
+            GUI.color = new Color(0.3f, 0.6f, 1f);
+        EditorGUILayout.Vector3Field("Scale", snapshot.scale);
+        GUI.color = oldColor;
+
+        if (snapshot.isRectTransform)
+        {
+            bool anchoredPositionChanged = changedProps.Contains("anchoredPosition");
+            bool anchoredPosition3DChanged = changedProps.Contains("anchoredPosition3D");
+            bool anchorMinChanged = changedProps.Contains("anchorMin");
+            bool anchorMaxChanged = changedProps.Contains("anchorMax");
+            bool pivotChanged = changedProps.Contains("pivot");
+            bool sizeDeltaChanged = changedProps.Contains("sizeDelta");
+            bool offsetMinChanged = changedProps.Contains("offsetMin");
+            bool offsetMaxChanged = changedProps.Contains("offsetMax");
+
+            if (anchoredPositionChanged)
+                GUI.color = new Color(0.3f, 0.6f, 1f);
+            EditorGUILayout.Vector2Field("Anchored Position", snapshot.anchoredPosition);
+            GUI.color = oldColor;
+
+            if (anchoredPosition3DChanged)
+                GUI.color = new Color(0.3f, 0.6f, 1f);
+            EditorGUILayout.Vector3Field("Anchored Position 3D", snapshot.anchoredPosition3D);
+            GUI.color = oldColor;
+
+            if (anchorMinChanged)
+                GUI.color = new Color(0.3f, 0.6f, 1f);
+            EditorGUILayout.Vector2Field("Anchor Min", snapshot.anchorMin);
+            GUI.color = oldColor;
+
+            if (anchorMaxChanged)
+                GUI.color = new Color(0.3f, 0.6f, 1f);
+            EditorGUILayout.Vector2Field("Anchor Max", snapshot.anchorMax);
+            GUI.color = oldColor;
+
+            if (pivotChanged)
+                GUI.color = new Color(0.3f, 0.6f, 1f);
+            EditorGUILayout.Vector2Field("Pivot", snapshot.pivot);
+            GUI.color = oldColor;
+
+            if (sizeDeltaChanged)
+                GUI.color = new Color(0.3f, 0.6f, 1f);
+            EditorGUILayout.Vector2Field("Size Delta", snapshot.sizeDelta);
+            GUI.color = oldColor;
+
+            if (offsetMinChanged)
+                GUI.color = new Color(0.3f, 0.6f, 1f);
+            EditorGUILayout.Vector2Field("Offset Min", snapshot.offsetMin);
+            GUI.color = oldColor;
+
+            if (offsetMaxChanged)
+                GUI.color = new Color(0.3f, 0.6f, 1f);
+            EditorGUILayout.Vector2Field("Offset Max", snapshot.offsetMax);
+            GUI.color = oldColor;
+        }
+    }
+
+    private static void DrawTransformCurrentGUI(Transform transform, List<string> changedProps)
+    {
+        if (transform == null)
+            return;
+
+        bool positionChanged = changedProps.Contains("position");
+        bool rotationChanged = changedProps.Contains("rotation");
+        bool scaleChanged = changedProps.Contains("scale");
+
+        Color oldColor = GUI.color;
+
+        if (positionChanged)
+            GUI.color = new Color(0.3f, 0.6f, 1f);
+        Vector3 newPosition = EditorGUILayout.Vector3Field("Position", transform.localPosition);
+        if (newPosition != transform.localPosition)
+            transform.localPosition = newPosition;
+        GUI.color = oldColor;
+
+        if (rotationChanged)
+            GUI.color = new Color(0.3f, 0.6f, 1f);
+        Vector3 newEuler = EditorGUILayout.Vector3Field("Rotation", transform.localRotation.eulerAngles);
+        if (newEuler != transform.localRotation.eulerAngles)
+            transform.localRotation = Quaternion.Euler(newEuler);
+        GUI.color = oldColor;
+
+        if (scaleChanged)
+            GUI.color = new Color(0.3f, 0.6f, 1f);
+        Vector3 newScale = EditorGUILayout.Vector3Field("Scale", transform.localScale);
+        if (newScale != transform.localScale)
+            transform.localScale = newScale;
+        GUI.color = oldColor;
+
+        RectTransform rt = transform as RectTransform;
+        if (rt != null)
+        {
+            bool anchoredPositionChanged = changedProps.Contains("anchoredPosition");
+            bool anchoredPosition3DChanged = changedProps.Contains("anchoredPosition3D");
+            bool anchorMinChanged = changedProps.Contains("anchorMin");
+            bool anchorMaxChanged = changedProps.Contains("anchorMax");
+            bool pivotChanged = changedProps.Contains("pivot");
+            bool sizeDeltaChanged = changedProps.Contains("sizeDelta");
+            bool offsetMinChanged = changedProps.Contains("offsetMin");
+            bool offsetMaxChanged = changedProps.Contains("offsetMax");
+
+            if (anchoredPositionChanged)
+                GUI.color = new Color(0.3f, 0.6f, 1f);
+            Vector2 newAnchoredPosition = EditorGUILayout.Vector2Field("Anchored Position", rt.anchoredPosition);
+            if (newAnchoredPosition != rt.anchoredPosition)
+                rt.anchoredPosition = newAnchoredPosition;
+            GUI.color = oldColor;
+
+            if (anchoredPosition3DChanged)
+                GUI.color = new Color(0.3f, 0.6f, 1f);
+            Vector3 newAnchoredPosition3D = EditorGUILayout.Vector3Field("Anchored Position 3D", rt.anchoredPosition3D);
+            if (newAnchoredPosition3D != rt.anchoredPosition3D)
+                rt.anchoredPosition3D = newAnchoredPosition3D;
+            GUI.color = oldColor;
+
+            if (anchorMinChanged)
+                GUI.color = new Color(0.3f, 0.6f, 1f);
+            Vector2 newAnchorMin = EditorGUILayout.Vector2Field("Anchor Min", rt.anchorMin);
+            if (newAnchorMin != rt.anchorMin)
+                rt.anchorMin = newAnchorMin;
+            GUI.color = oldColor;
+
+            if (anchorMaxChanged)
+                GUI.color = new Color(0.3f, 0.6f, 1f);
+            Vector2 newAnchorMax = EditorGUILayout.Vector2Field("Anchor Max", rt.anchorMax);
+            if (newAnchorMax != rt.anchorMax)
+                rt.anchorMax = newAnchorMax;
+            GUI.color = oldColor;
+
+            if (pivotChanged)
+                GUI.color = new Color(0.3f, 0.6f, 1f);
+            Vector2 newPivot = EditorGUILayout.Vector2Field("Pivot", rt.pivot);
+            if (newPivot != rt.pivot)
+                rt.pivot = newPivot;
+            GUI.color = oldColor;
+
+            if (sizeDeltaChanged)
+                GUI.color = new Color(0.3f, 0.6f, 1f);
+            Vector2 newSizeDelta = EditorGUILayout.Vector2Field("Size Delta", rt.sizeDelta);
+            if (newSizeDelta != rt.sizeDelta)
+                rt.sizeDelta = newSizeDelta;
+            GUI.color = oldColor;
+
+            if (offsetMinChanged)
+                GUI.color = new Color(0.3f, 0.6f, 1f);
+            Vector2 newOffsetMin = EditorGUILayout.Vector2Field("Offset Min", rt.offsetMin);
+            if (newOffsetMin != rt.offsetMin)
+                rt.offsetMin = newOffsetMin;
+            GUI.color = oldColor;
+
+            if (offsetMaxChanged)
+                GUI.color = new Color(0.3f, 0.6f, 1f);
+            Vector2 newOffsetMax = EditorGUILayout.Vector2Field("Offset Max", rt.offsetMax);
+            if (newOffsetMax != rt.offsetMax)
+                rt.offsetMax = newOffsetMax;
+            GUI.color = oldColor;
+        }
     }
 
     private static string GetPropertyDisplayName(string property)
