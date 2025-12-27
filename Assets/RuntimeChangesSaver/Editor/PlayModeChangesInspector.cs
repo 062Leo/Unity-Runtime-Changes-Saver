@@ -66,7 +66,6 @@ public class PlayModeChangesInspector
         bool hasChanges = changes != null && changes.Count > 0;
 
         EditorGUILayout.BeginHorizontal(EditorStyles.helpBox);
-        GUILayout.FlexibleSpace();
 
         using (new EditorGUI.DisabledScope(!hasChanges))
         {
@@ -78,6 +77,7 @@ public class PlayModeChangesInspector
                 PopupWindow.Show(screenRect, new PlayModeOverridesPopup(go, id, original, current, changes));
             }
         }
+        GUILayout.FlexibleSpace();
 
         EditorGUILayout.EndHorizontal();
         EditorGUILayout.Space(2);

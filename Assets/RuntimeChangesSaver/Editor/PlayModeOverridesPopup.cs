@@ -30,9 +30,9 @@ internal class PlayModeOverridesPopup : PopupWindowContent
 
         GUILayout.Space(4);
 
-        // Reines Frontend: wir tun so, als ob keine TreeView-Daten vorhanden wären
-        // und zeigen nur den "No overrides"-Zustand wie im PrefabOverridesWindow.
-        EditorGUILayout.LabelField("No overrides", EditorStyles.miniLabel);
+        // Demo-TreeView mit genau einem Eintrag: "Transform".
+        GUILayout.Space(4);
+        DrawDemoTransformRow();
 
         GUILayout.FlexibleSpace();
 
@@ -103,5 +103,107 @@ internal class PlayModeOverridesPopup : PopupWindowContent
 
         GUI.Label(labelRect, "in", EditorStyles.label);
         GUI.Label(contentRect, stageName, EditorStyles.label);
+    }
+
+    private void DrawDemoTransformRow()
+    {
+        const float rowHeight = 18f;
+
+        Rect rowRect = GUILayoutUtility.GetRect(100, 10000, rowHeight, rowHeight);
+
+        // Hintergrund wie eine einfache TreeView-Zeile
+        if (Event.current.type == EventType.Repaint)
+        {
+            EditorGUI.DrawRect(rowRect, new Color(0.22f, 0.22f, 0.22f, EditorGUIUtility.isProSkin ? 0.6f : 0.2f));
+        }
+
+        Rect labelRect = rowRect;
+        labelRect.xMin += 16f; // Einrückung wie bei einem TreeView-Item
+        GUI.Label(labelRect, "Transform", EditorStyles.label);
+
+        // Klick auf die Zeile öffnet ein Vergleichs-Popup links daneben.
+        if (Event.current.type == EventType.MouseDown && rowRect.Contains(Event.current.mousePosition))
+        {
+            if (Event.current.button == 0)
+            {
+                Event.current.Use();
+                var popupRect = new Rect(rowRect.xMax, rowRect.y, 350f, 260f);
+                PopupWindow.Show(popupRect, new TransformComparisonDemoPopup());
+            }
+        }
+    }
+
+    // Frontend-only-Vergleichspopup, angelehnt an ComparisonViewPopup
+    private class TransformComparisonDemoPopup : PopupWindowContent
+    {
+        private Vector2 _scrollPos;
+        private Vector3 _sourcePosition = new Vector3(0, 0, 0);
+        private Vector3 _sourceRotation = new Vector3(0, 0, 0);
+        private Vector3 _sourceScale = new Vector3(1, 1, 1);
+
+        private Vector3 _instancePosition = new Vector3(1, 2, 3);
+        private Vector3 _instanceRotation = new Vector3(10, 20, 30);
+        private Vector3 _instanceScale = new Vector3(1.1f, 0.9f, 1.0f);
+
+        public override Vector2 GetWindowSize()
+        {
+            return new Vector2(420f, 260f);
+        }
+
+        public override void OnGUI(Rect rect)
+        {
+            // Kopfzeile mit "Prefab Source" und "Override" wie im Original
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Prefab Source", EditorStyles.boldLabel);
+            GUILayout.FlexibleSpace();
+            GUILayout.Label("Override", EditorStyles.boldLabel);
+            GUILayout.EndHorizontal();
+
+            EditorGUILayout.Space(2);
+
+            _scrollPos = EditorGUILayout.BeginScrollView(_scrollPos);
+
+            GUILayout.BeginHorizontal();
+
+            // Linke Spalte: Source-Transform (read-only Darstellung)
+            GUILayout.BeginVertical();
+            EditorGUILayout.LabelField("Transform", EditorStyles.boldLabel);
+            using (new EditorGUI.DisabledScope(true))
+            {
+                _sourcePosition = EditorGUILayout.Vector3Field("Position", _sourcePosition);
+                _sourceRotation = EditorGUILayout.Vector3Field("Rotation", _sourceRotation);
+                _sourceScale = EditorGUILayout.Vector3Field("Scale", _sourceScale);
+            }
+            GUILayout.EndVertical();
+
+            GUILayout.Space(16);
+
+            // Rechte Spalte: Instance-Transform (editierbare Darstellung)
+            GUILayout.BeginVertical();
+            EditorGUILayout.LabelField("Transform", EditorStyles.boldLabel);
+            _instancePosition = EditorGUILayout.Vector3Field("Position", _instancePosition);
+            _instanceRotation = EditorGUILayout.Vector3Field("Rotation", _instanceRotation);
+            _instanceScale = EditorGUILayout.Vector3Field("Scale", _instanceScale);
+            GUILayout.EndVertical();
+
+            GUILayout.EndHorizontal();
+
+            EditorGUILayout.EndScrollView();
+
+            GUILayout.FlexibleSpace();
+
+            // Untere Buttonreihe: Apply / Revert ohne Funktion
+            GUILayout.BeginHorizontal();
+            GUILayout.FlexibleSpace();
+            if (GUILayout.Button("Revert", GUILayout.Width(80f)))
+            {
+                // Frontend-only
+            }
+            if (GUILayout.Button("Apply", GUILayout.Width(80f)))
+            {
+                // Frontend-only
+            }
+            GUILayout.EndHorizontal();
+        }
     }
 }
