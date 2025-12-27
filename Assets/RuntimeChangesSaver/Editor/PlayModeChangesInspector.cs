@@ -63,133 +63,28 @@ public class PlayModeChangesInspector
 
     private static void DrawPlayModeOverridesHeader(GameObject go, int id, TransformSnapshot original, TransformSnapshot current, List<string> changes)
     {
-        EditorGUILayout.BeginVertical("HelpBox");
-
-        EditorGUILayout.BeginHorizontal();
         bool hasChanges = changes != null && changes.Count > 0;
-        bool expanded = GetFoldoutState(id);
-        expanded = EditorGUILayout.Foldout(expanded, "PlayModeChanges", true);
-        SetFoldoutState(id, expanded);
 
+        EditorGUILayout.BeginHorizontal(EditorStyles.helpBox);
+        EditorGUILayout.LabelField("Play Mode Overrides", EditorStyles.boldLabel);
         GUILayout.FlexibleSpace();
 
-        EditorGUILayout.EndHorizontal();
-
-        if (!expanded)
+        using (new EditorGUI.DisabledScope(!hasChanges))
         {
-            EditorGUILayout.EndVertical();
-            EditorGUILayout.Space(10);
-            return;
+            GUIContent buttonContent = new GUIContent("Play Mode Overrides");
+            Rect buttonRect = GUILayoutUtility.GetRect(buttonContent, EditorStyles.miniButton, GUILayout.Width(140f));
+            if (GUI.Button(buttonRect, buttonContent, EditorStyles.miniButton))
+            {
+                Rect screenRect = GUIUtility.GUIToScreenRect(buttonRect);
+                PopupWindow.Show(screenRect, new PlayModeOverridesPopup(go, id, original, current, changes));
+            }
         }
 
+        EditorGUILayout.EndHorizontal();
         EditorGUILayout.Space(2);
-
-        EditorGUILayout.LabelField("Review, Revert or Apply In-Game Changes", EditorStyles.miniLabel);
-        EditorGUILayout.Space(4);
-
-        if (!hasChanges)
-        {
-            EditorGUILayout.LabelField("Keine Änderungen.", EditorStyles.miniLabel);
-        }
-        else
-        {
-            DrawComponentListAndDetails(go, id, original, current, changes);
-        }
-
-        bool canApplyOrRevertAll = Application.isPlaying && hasChanges && go != null;
-
-        EditorGUILayout.Space(4);
-
-        EditorGUILayout.BeginHorizontal();
-        GUILayout.FlexibleSpace();
-        using (new EditorGUI.DisabledScope(!canApplyOrRevertAll))
-        {
-            if (GUILayout.Button("Revert All", EditorStyles.miniButtonLeft, GUILayout.Width(90)))
-            {
-                RevertTransform(go.transform, original, changes);
-            }
-
-            if (GUILayout.Button("Apply All", EditorStyles.miniButtonRight, GUILayout.Width(90)))
-            {
-                PlayModeChangesTracker.ApplyAll(id, go);
-                PlayModeChangesTracker.PersistSelectedChangesForAll();
-            }
-        }
-        EditorGUILayout.EndHorizontal();
-
-        EditorGUILayout.EndVertical();
-
-        EditorGUILayout.Space(10);
     }
 
-    private static bool GetFoldoutState(int id)
-    {
-        bool state;
-        if (!foldoutStates.TryGetValue(id, out state))
-        {
-            state = false;
-            foldoutStates[id] = state;
-        }
-        return state;
-    }
-
-    private static void SetFoldoutState(int id, bool state)
-    {
-        foldoutStates[id] = state;
-    }
-
-    private static bool GetComponentDetailState(int id)
-    {
-        bool state;
-        if (!componentDetailStates.TryGetValue(id, out state))
-        {
-            state = false;
-            componentDetailStates[id] = state;
-        }
-        return state;
-    }
-
-    private static void SetComponentDetailState(int id, bool state)
-    {
-        componentDetailStates[id] = state;
-    }
-
-    private static void DrawComponentListAndDetails(GameObject go, int id, TransformSnapshot original, TransformSnapshot current, List<string> changes)
-    {
-        EditorGUILayout.BeginVertical();
-
-        // Aktuell tracken wir nur Transform/RectTransform, daher genau eine Component-Zeile
-        Transform component = go.transform;
-        System.Type componentType = original.isRectTransform ? typeof(RectTransform) : typeof(Transform);
-        GUIContent content = EditorGUIUtility.ObjectContent(component, componentType);
-        content.text = original.isRectTransform ? "Rect Transform" : "Transform";
-
-        Rect rowRect = EditorGUILayout.GetControlRect(false, EditorGUIUtility.singleLineHeight);
-        if (GUI.Button(rowRect, GUIContent.none, GUIStyle.none))
-        {
-            bool currentState = GetComponentDetailState(id);
-            SetComponentDetailState(id, !currentState);
-        }
-
-        // Icon + Text in der Zeile zeichnen
-        Rect iconRect = new Rect(rowRect.x, rowRect.y, 18, rowRect.height);
-        Rect labelRect = new Rect(rowRect.x + 20, rowRect.y, rowRect.width - 20, rowRect.height);
-        if (content.image != null)
-            GUI.Label(iconRect, content.image);
-        GUI.Label(labelRect, content.text);
-
-        bool showDetails = GetComponentDetailState(id);
-
-        if (showDetails)
-        {
-            EditorGUILayout.Space(4);
-            DrawTransformBeforeAfter(go, id, original, current, changes);
-        }
-
-        EditorGUILayout.EndVertical();
-    }
-
-    private static void DrawTransformBeforeAfter(GameObject go, int id, TransformSnapshot original, TransformSnapshot current, List<string> changes)
+    internal static void DrawTransformBeforeAfter(GameObject go, int id, TransformSnapshot original, TransformSnapshot current, List<string> changes)
     {
         EditorGUILayout.BeginHorizontal();
 
@@ -225,54 +120,6 @@ public class PlayModeChangesInspector
         EditorGUILayout.EndVertical();
 
         EditorGUILayout.EndHorizontal();
-    }
-
-    private static void RevertTransform(Transform transform, TransformSnapshot original, List<string> changedProps)
-    {
-        if (transform == null || original == null || changedProps == null)
-            return;
-
-        RectTransform rt = transform as RectTransform;
-
-        foreach (string prop in changedProps)
-        {
-            switch (prop)
-            {
-                case "position":
-                    transform.localPosition = original.position;
-                    break;
-                case "rotation":
-                    transform.localRotation = original.rotation;
-                    break;
-                case "scale":
-                    transform.localScale = original.scale;
-                    break;
-                case "anchoredPosition":
-                    if (rt) rt.anchoredPosition = original.anchoredPosition;
-                    break;
-                case "anchoredPosition3D":
-                    if (rt) rt.anchoredPosition3D = original.anchoredPosition3D;
-                    break;
-                case "anchorMin":
-                    if (rt) rt.anchorMin = original.anchorMin;
-                    break;
-                case "anchorMax":
-                    if (rt) rt.anchorMax = original.anchorMax;
-                    break;
-                case "pivot":
-                    if (rt) rt.pivot = original.pivot;
-                    break;
-                case "sizeDelta":
-                    if (rt) rt.sizeDelta = original.sizeDelta;
-                    break;
-                case "offsetMin":
-                    if (rt) rt.offsetMin = original.offsetMin;
-                    break;
-                case "offsetMax":
-                    if (rt) rt.offsetMax = original.offsetMax;
-                    break;
-            }
-        }
     }
 
     private static void DrawTransformSnapshotGUI(TransformSnapshot snapshot, List<string> changedProps)
@@ -457,7 +304,55 @@ public class PlayModeChangesInspector
         }
     }
 
-    private static string GetPropertyDisplayName(string property)
+    internal static void RevertTransform(Transform transform, TransformSnapshot original, List<string> changedProps)
+    {
+        if (transform == null || original == null || changedProps == null)
+            return;
+
+        RectTransform rt = transform as RectTransform;
+
+        foreach (string prop in changedProps)
+        {
+            switch (prop)
+            {
+                case "position":
+                    transform.localPosition = original.position;
+                    break;
+                case "rotation":
+                    transform.localRotation = original.rotation;
+                    break;
+                case "scale":
+                    transform.localScale = original.scale;
+                    break;
+                case "anchoredPosition":
+                    if (rt) rt.anchoredPosition = original.anchoredPosition;
+                    break;
+                case "anchoredPosition3D":
+                    if (rt) rt.anchoredPosition3D = original.anchoredPosition3D;
+                    break;
+                case "anchorMin":
+                    if (rt) rt.anchorMin = original.anchorMin;
+                    break;
+                case "anchorMax":
+                    if (rt) rt.anchorMax = original.anchorMax;
+                    break;
+                case "pivot":
+                    if (rt) rt.pivot = original.pivot;
+                    break;
+                case "sizeDelta":
+                    if (rt) rt.sizeDelta = original.sizeDelta;
+                    break;
+                case "offsetMin":
+                    if (rt) rt.offsetMin = original.offsetMin;
+                    break;
+                case "offsetMax":
+                    if (rt) rt.offsetMax = original.offsetMax;
+                    break;
+            }
+        }
+    }
+
+    internal static string GetPropertyDisplayName(string property)
     {
         switch (property)
         {
@@ -476,7 +371,7 @@ public class PlayModeChangesInspector
         }
     }
 
-    private static string GetPropertyTooltip(string property, TransformSnapshot original, TransformSnapshot current)
+    internal static string GetPropertyTooltip(string property, TransformSnapshot original, TransformSnapshot current)
     {
         string originalValue = GetValueDisplay(property, original);
         string currentValue = GetValueDisplay(property, current);
