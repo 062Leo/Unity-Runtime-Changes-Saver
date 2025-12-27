@@ -111,7 +111,7 @@ public static class PlayModeChangesTracker
 
     private static void ApplyChangesFromStoreToEditMode()
     {
-        var store = AssetDatabase.LoadAssetAtPath<PlayModeTransformChangesStore>("Assets/01_Skripts/Editor/PlayModeTransformChangesStore.asset");
+        var store = PlayModeTransformChangesStore.LoadExisting();
         if (store == null || store.changes == null || store.changes.Count == 0)
             return;
 
