@@ -66,7 +66,6 @@ public class PlayModeChangesInspector
         bool hasChanges = changes != null && changes.Count > 0;
 
         EditorGUILayout.BeginHorizontal(EditorStyles.helpBox);
-        EditorGUILayout.LabelField("Play Mode Overrides", EditorStyles.boldLabel);
         GUILayout.FlexibleSpace();
 
         using (new EditorGUI.DisabledScope(!hasChanges))
