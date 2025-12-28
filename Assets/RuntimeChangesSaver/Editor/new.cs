@@ -164,6 +164,7 @@ public static class PlayModeChangesTracker
     private static Dictionary<string, TransformSnapshot> snapshots = new();
     private static Dictionary<string, HashSet<string>> selectedProperties = new();
     private static Dictionary<string, Dictionary<string, ComponentSnapshot>> componentSnapshots = new();
+    private static HashSet<string> markedForPersistence = new HashSet<string>();
 
     private const string PREFS_KEY = "PlayModeChangesTracker_CaptureNeeded";
 
@@ -231,6 +232,7 @@ public static class PlayModeChangesTracker
                 snapshots.Clear();
                 componentSnapshots.Clear();
                 selectedProperties.Clear();
+                markedForPersistence.Clear();
                 break;
         }
     }
@@ -423,7 +425,7 @@ public static class PlayModeChangesTracker
         }
     }
 
-    private static string GetGameObjectKey(GameObject go)
+    public static string GetGameObjectKey(GameObject go)
     {
         if (go == null) return "";
 
@@ -436,7 +438,7 @@ public static class PlayModeChangesTracker
         return $"{scenePath}|{goPath}";
     }
 
-    private static string GetComponentKey(Component comp)
+    public static string GetComponentKey(Component comp)
     {
         var allComps = comp.gameObject.GetComponents(comp.GetType());
         int index = Array.IndexOf(allComps, comp);
@@ -634,46 +636,111 @@ public static class PlayModeChangesTracker
         RecordSelectedChangesToStore();
     }
 
+    public static void MarkForPersistence(GameObject go)
+    {
+        string key = GetGameObjectKey(go);
+        markedForPersistence.Add(key);
+        Debug.Log($"Marked {go.name} for persistence");
+    }
+
     private static void ApplyChangesFromStoreToEditMode()
     {
-        var store = PlayModeTransformChangesStore.LoadExisting();
-        if (store == null || store.changes == null || store.changes.Count == 0)
-            return;
-
-        foreach (var change in store.changes)
+        if (markedForPersistence.Count == 0)
         {
-            if (string.IsNullOrEmpty(change.scenePath))
-                continue;
+            Debug.Log("No objects marked for persistence");
+            return;
+        }
 
-            var scene = EditorSceneManager.GetSceneByPath(change.scenePath);
-            if (!scene.IsValid() || !scene.isLoaded)
+        Debug.Log($"Applying changes for {markedForPersistence.Count} marked objects");
+
+        foreach (string goKey in markedForPersistence)
+        {
+            // Parse key to get scene and object path
+            var parts = goKey.Split('|');
+            if (parts.Length != 2) continue;
+
+            string scenePath = parts[0];
+            string goPath = parts[1];
+
+            var scene = EditorSceneManager.GetSceneByPath(scenePath);
+            if (!scene.IsValid())
+                scene = EditorSceneManager.GetSceneByName(scenePath);
+
+            if (!scene.IsValid())
             {
-                scene = EditorSceneManager.OpenScene(change.scenePath, OpenSceneMode.Additive);
+                Debug.LogWarning($"Could not find scene: {scenePath}");
+                continue;
             }
 
-            var go = FindInSceneByPath(scene, change.objectPath);
+            GameObject go = FindInSceneByPath(scene, goPath);
             if (go == null)
-                continue;
-
-            var t = go.transform;
-            var rt = t as RectTransform;
-
-            Undo.RecordObject(t, "Apply Play Mode Transform Changes");
-
-            foreach (var prop in change.modifiedProperties)
             {
-                ApplyPropertyToTransform(t, rt, change, prop);
+                Debug.LogWarning($"Could not find GameObject: {goPath}");
+                continue;
             }
 
-            EditorUtility.SetDirty(go);
-            if (scene.IsValid())
+            // Apply Transform changes
+            if (snapshots.ContainsKey(goKey))
             {
-                EditorSceneManager.MarkSceneDirty(scene);
+                TransformSnapshot original = snapshots[goKey];
+                Transform t = go.transform;
+                RectTransform rt = t as RectTransform;
+
+                // Get current values (from play mode)
+                TransformSnapshot current = new TransformSnapshot(go);
+
+                Undo.RecordObject(t, "Apply Play Mode Transform Changes");
+
+                // Apply all transform properties
+                t.localPosition = current.position;
+                t.localRotation = current.rotation;
+                t.localScale = current.scale;
+
+                if (rt != null && current.isRectTransform)
+                {
+                    rt.anchoredPosition = current.anchoredPosition;
+                    rt.anchoredPosition3D = current.anchoredPosition3D;
+                    rt.anchorMin = current.anchorMin;
+                    rt.anchorMax = current.anchorMax;
+                    rt.pivot = current.pivot;
+                    rt.sizeDelta = current.sizeDelta;
+                    rt.offsetMin = current.offsetMin;
+                    rt.offsetMax = current.offsetMax;
+                }
+
+                EditorUtility.SetDirty(go);
+                if (scene.IsValid())
+                {
+                    EditorSceneManager.MarkSceneDirty(scene);
+                }
+
+                Debug.Log($"Applied Transform changes to {go.name}");
+            }
+
+            // Apply Component changes
+            if (componentSnapshots.ContainsKey(goKey))
+            {
+                var compSnaps = componentSnapshots[goKey];
+
+                foreach (var comp in go.GetComponents<Component>())
+                {
+                    if (comp == null || comp is Transform) continue;
+
+                    string compKey = GetComponentKey(comp);
+                    if (!compSnaps.ContainsKey(compKey)) continue;
+
+                    // Component has snapshot, so it was changed
+                    // The current values in play mode are what we want to keep
+                    Undo.RecordObject(comp, "Apply Play Mode Component Changes");
+                    EditorUtility.SetDirty(comp);
+
+                    Debug.Log($"Applied {comp.GetType().Name} changes to {go.name}");
+                }
             }
         }
 
-        store.Clear();
         AssetDatabase.SaveAssets();
+        Debug.Log("All marked changes applied to Edit Mode");
     }
 
     private static void ApplyPropertyToTransform(Transform t, RectTransform rt, PlayModeTransformChangesStore.TransformChange change, string prop)
@@ -901,6 +968,8 @@ internal class PlayModeOverridesWindow : PopupWindowContent
     private readonly List<Component> changedComponents;
     private Vector2 scroll;
     private const float RowHeight = 22f;
+    private const float HeaderHeight = 28f;
+    private const float FooterHeight = 50f;
 
     public PlayModeOverridesWindow(GameObject go)
     {
@@ -911,29 +980,38 @@ internal class PlayModeOverridesWindow : PopupWindowContent
     public override Vector2 GetWindowSize()
     {
         int count = Mathf.Max(1, changedComponents.Count);
-        float height = 40 + count * RowHeight + 10;
-        return new Vector2(320, Mathf.Min(400, height));
+        float listHeight = count * RowHeight;
+        float totalHeight = HeaderHeight + listHeight + FooterHeight + 10;
+        return new Vector2(320, Mathf.Min(500, totalHeight));
     }
 
     public override void OnGUI(Rect rect)
     {
-        DrawHeader();
+        // Header
+        Rect headerRect = new Rect(rect.x, rect.y, rect.width, HeaderHeight);
+        DrawHeader(headerRect);
 
         if (changedComponents.Count == 0)
         {
-            EditorGUILayout.HelpBox("No changed components", MessageType.Info);
+            Rect helpRect = new Rect(rect.x + 10, rect.y + HeaderHeight, rect.width - 20, 40);
+            GUI.Label(helpRect, "No changed components", EditorStyles.helpBox);
             return;
         }
 
-        Rect listRect = new Rect(rect.x, rect.y + 28, rect.width, rect.height - 28);
+        // Component list
+        float listHeight = rect.height - HeaderHeight - FooterHeight;
+        Rect listRect = new Rect(rect.x, rect.y + HeaderHeight, rect.width, listHeight);
         DrawComponentList(listRect);
+
+        // Footer
+        Rect footerRect = new Rect(rect.x, rect.y + HeaderHeight + listHeight, rect.width, FooterHeight);
+        DrawFooter(footerRect);
     }
 
-    void DrawHeader()
+    void DrawHeader(Rect rect)
     {
-        Rect header = GUILayoutUtility.GetRect(1, 24);
         EditorGUI.LabelField(
-            new Rect(header.x + 6, header.y + 4, header.width, 16),
+            new Rect(rect.x + 6, rect.y + 6, rect.width - 12, 20),
             "Play Mode Overrides",
             EditorStyles.boldLabel
         );
@@ -966,6 +1044,131 @@ internal class PlayModeOverridesWindow : PopupWindowContent
             PopupWindow.Show(rowRect, new PlayModeOverrideComparePopup(component));
         }
     }
+
+    void DrawFooter(Rect rect)
+    {
+        // Draw background
+        if (Event.current.type == EventType.Repaint)
+        {
+            Color bgColor = EditorGUIUtility.isProSkin
+                ? new Color(0.22f, 0.22f, 0.22f, 0.8f)
+                : new Color(0.8f, 0.8f, 0.8f, 0.8f);
+            EditorGUI.DrawRect(rect, bgColor);
+        }
+
+        // Buttons
+        float buttonWidth = 120f;
+        float buttonHeight = 30f;
+        float spacing = 10f;
+        float totalWidth = buttonWidth * 2 + spacing;
+        float startX = rect.x + (rect.width - totalWidth) / 2;
+        float startY = rect.y + (rect.height - buttonHeight) / 2;
+
+        Rect revertRect = new Rect(startX, startY, buttonWidth, buttonHeight);
+        Rect applyRect = new Rect(startX + buttonWidth + spacing, startY, buttonWidth, buttonHeight);
+
+        if (GUI.Button(revertRect, "Revert All"))
+        {
+            RevertAllChanges();
+            editorWindow.Close();
+        }
+
+        if (GUI.Button(applyRect, "Apply All"))
+        {
+            ApplyAllChanges();
+            editorWindow.Close();
+        }
+    }
+
+    void RevertAllChanges()
+    {
+        string key = PlayModeChangesTracker.GetGameObjectKey(targetGO);
+        var originalSnapshot = PlayModeChangesTracker.GetSnapshot(targetGO);
+
+        if (originalSnapshot != null)
+        {
+            var transform = targetGO.transform;
+            var rt = transform as RectTransform;
+
+            // Revert transform
+            transform.localPosition = originalSnapshot.position;
+            transform.localRotation = originalSnapshot.rotation;
+            transform.localScale = originalSnapshot.scale;
+
+            if (rt != null && originalSnapshot.isRectTransform)
+            {
+                rt.anchoredPosition = originalSnapshot.anchoredPosition;
+                rt.anchoredPosition3D = originalSnapshot.anchoredPosition3D;
+                rt.anchorMin = originalSnapshot.anchorMin;
+                rt.anchorMax = originalSnapshot.anchorMax;
+                rt.pivot = originalSnapshot.pivot;
+                rt.sizeDelta = originalSnapshot.sizeDelta;
+                rt.offsetMin = originalSnapshot.offsetMin;
+                rt.offsetMax = originalSnapshot.offsetMax;
+            }
+        }
+
+        // Revert other components
+        foreach (var comp in changedComponents)
+        {
+            if (comp is Transform) continue;
+
+            string compKey = PlayModeChangesTracker.GetComponentKey(comp);
+            var snapshot = PlayModeChangesTracker.GetComponentSnapshot(targetGO, compKey);
+
+            if (snapshot != null)
+            {
+                RevertComponent(comp, snapshot);
+            }
+        }
+
+        Debug.Log($"Reverted all changes on {targetGO.name}");
+    }
+
+    void ApplyAllChanges()
+    {
+        // Mark this GameObject's changes to be persisted
+        PlayModeChangesTracker.MarkForPersistence(targetGO);
+        Debug.Log($"Marked all changes on {targetGO.name} for persistence - will be applied when exiting play mode");
+    }
+
+    void RevertComponent(Component comp, ComponentSnapshot snapshot)
+    {
+        SerializedObject so = new SerializedObject(comp);
+
+        foreach (var kvp in snapshot.properties)
+        {
+            SerializedProperty prop = so.FindProperty(kvp.Key);
+            if (prop == null) continue;
+
+            try
+            {
+                SetPropertyValue(prop, kvp.Value);
+            }
+            catch { }
+        }
+
+        so.ApplyModifiedProperties();
+    }
+
+    void SetPropertyValue(SerializedProperty prop, object value)
+    {
+        if (value == null) return;
+
+        switch (prop.propertyType)
+        {
+            case SerializedPropertyType.Integer: prop.intValue = (int)value; break;
+            case SerializedPropertyType.Boolean: prop.boolValue = (bool)value; break;
+            case SerializedPropertyType.Float: prop.floatValue = (float)value; break;
+            case SerializedPropertyType.String: prop.stringValue = (string)value; break;
+            case SerializedPropertyType.Color: prop.colorValue = (Color)value; break;
+            case SerializedPropertyType.Vector2: prop.vector2Value = (Vector2)value; break;
+            case SerializedPropertyType.Vector3: prop.vector3Value = (Vector3)value; break;
+            case SerializedPropertyType.Vector4: prop.vector4Value = (Vector4)value; break;
+            case SerializedPropertyType.Quaternion: prop.quaternionValue = (Quaternion)value; break;
+            case SerializedPropertyType.Enum: prop.enumValueIndex = (int)value; break;
+        }
+    }
 }
 
 internal class PlayModeOverrideComparePopup : PopupWindowContent
@@ -979,6 +1182,7 @@ internal class PlayModeOverrideComparePopup : PopupWindowContent
     private Vector2 rightScroll;
     private const float MinWidth = 350f;
     private const float HeaderHeight = 24f;
+    private const float FooterHeight = 40f;
 
     public PlayModeOverrideComparePopup(Component component)
     {
@@ -989,25 +1193,104 @@ internal class PlayModeOverrideComparePopup : PopupWindowContent
     void CreateSnapshotAndEditors()
     {
         var go = liveComponent.gameObject;
-        snapshotGO = UnityEngine.Object.Instantiate(go);
-        snapshotGO.hideFlags = HideFlags.HideAndDontSave;
 
-        var type = liveComponent.GetType();
-        var originals = go.GetComponents(type);
-        var snaps = snapshotGO.GetComponents(type);
-
-        int index = Array.IndexOf(originals, liveComponent);
-        if (index >= 0 && index < snaps.Length)
+        if (liveComponent is Transform)
         {
-            snapshotComponent = snaps[index];
+            // Special handling for Transform
+            snapshotGO = new GameObject("SnapshotTransform");
+            snapshotGO.hideFlags = HideFlags.HideAndDontSave;
+
+            var originalSnapshot = PlayModeChangesTracker.GetSnapshot(go);
+            if (originalSnapshot != null)
+            {
+                var snapshotTransform = snapshotGO.transform;
+                snapshotTransform.localPosition = originalSnapshot.position;
+                snapshotTransform.localRotation = originalSnapshot.rotation;
+                snapshotTransform.localScale = originalSnapshot.scale;
+
+                if (originalSnapshot.isRectTransform && liveComponent is RectTransform liveRT)
+                {
+                    var snapshotRT = snapshotGO.AddComponent<RectTransform>();
+                    snapshotRT.anchoredPosition = originalSnapshot.anchoredPosition;
+                    snapshotRT.anchoredPosition3D = originalSnapshot.anchoredPosition3D;
+                    snapshotRT.anchorMin = originalSnapshot.anchorMin;
+                    snapshotRT.anchorMax = originalSnapshot.anchorMax;
+                    snapshotRT.pivot = originalSnapshot.pivot;
+                    snapshotRT.sizeDelta = originalSnapshot.sizeDelta;
+                    snapshotRT.offsetMin = originalSnapshot.offsetMin;
+                    snapshotRT.offsetMax = originalSnapshot.offsetMax;
+
+                    snapshotComponent = snapshotRT;
+                }
+                else
+                {
+                    snapshotComponent = snapshotTransform;
+                }
+            }
+        }
+        else
+        {
+            // For other components, create snapshot from stored data
+            snapshotGO = new GameObject("SnapshotComponent");
+            snapshotGO.hideFlags = HideFlags.HideAndDontSave;
+
+            var type = liveComponent.GetType();
+            snapshotComponent = snapshotGO.AddComponent(type);
+
+            // Restore values from snapshot
+            string compKey = PlayModeChangesTracker.GetComponentKey(liveComponent);
+            var snapshot = PlayModeChangesTracker.GetComponentSnapshot(go, compKey);
+
+            if (snapshot != null)
+            {
+                SerializedObject so = new SerializedObject(snapshotComponent);
+
+                foreach (var kvp in snapshot.properties)
+                {
+                    SerializedProperty prop = so.FindProperty(kvp.Key);
+                    if (prop != null)
+                    {
+                        try
+                        {
+                            SetPropertyValue(prop, kvp.Value);
+                        }
+                        catch { }
+                    }
+                }
+
+                so.ApplyModifiedPropertiesWithoutUndo();
+            }
+        }
+
+        if (snapshotComponent != null)
+        {
             leftEditor = Editor.CreateEditor(snapshotComponent);
             rightEditor = Editor.CreateEditor(liveComponent);
         }
     }
 
+    void SetPropertyValue(SerializedProperty prop, object value)
+    {
+        if (value == null) return;
+
+        switch (prop.propertyType)
+        {
+            case SerializedPropertyType.Integer: prop.intValue = (int)value; break;
+            case SerializedPropertyType.Boolean: prop.boolValue = (bool)value; break;
+            case SerializedPropertyType.Float: prop.floatValue = (float)value; break;
+            case SerializedPropertyType.String: prop.stringValue = (string)value; break;
+            case SerializedPropertyType.Color: prop.colorValue = (Color)value; break;
+            case SerializedPropertyType.Vector2: prop.vector2Value = (Vector2)value; break;
+            case SerializedPropertyType.Vector3: prop.vector3Value = (Vector3)value; break;
+            case SerializedPropertyType.Vector4: prop.vector4Value = (Vector4)value; break;
+            case SerializedPropertyType.Quaternion: prop.quaternionValue = (Quaternion)value; break;
+            case SerializedPropertyType.Enum: prop.enumValueIndex = (int)value; break;
+        }
+    }
+
     public override Vector2 GetWindowSize()
     {
-        return new Vector2(MinWidth * 2 + 6, 500);
+        return new Vector2(MinWidth * 2 + 6, 500 + FooterHeight);
     }
 
     public override void OnGUI(Rect rect)
@@ -1019,13 +1302,17 @@ internal class PlayModeOverrideComparePopup : PopupWindowContent
         }
 
         float columnWidth = (rect.width - 6) * 0.5f;
+        float contentHeight = rect.height - FooterHeight;
 
-        Rect leftColumn = new Rect(rect.x, rect.y, columnWidth, rect.height);
-        Rect rightColumn = new Rect(rect.x + columnWidth + 6, rect.y, columnWidth, rect.height);
+        Rect leftColumn = new Rect(rect.x, rect.y, columnWidth, contentHeight);
+        Rect rightColumn = new Rect(rect.x + columnWidth + 6, rect.y, columnWidth, contentHeight);
+        Rect footerRect = new Rect(rect.x, rect.y + contentHeight, rect.width, FooterHeight);
 
         DrawColumn(leftColumn, leftEditor, ref leftScroll, "Original", false);
-        DrawSeparator(new Rect(rect.x + columnWidth, rect.y, 6, rect.height));
+        DrawSeparator(new Rect(rect.x + columnWidth, rect.y, 6, contentHeight));
         DrawColumn(rightColumn, rightEditor, ref rightScroll, "Play Mode", true);
+
+        DrawFooter(footerRect);
     }
 
     void DrawColumn(Rect columnRect, Editor editor, ref Vector2 scroll, string title, bool editable)
@@ -1079,7 +1366,7 @@ internal class PlayModeOverrideComparePopup : PopupWindowContent
         }
 
         Rect labelRect = new Rect(rect.x + 24, rect.y + 4, rect.width - 28, 16);
-        EditorGUI.LabelField(labelRect, content.text, EditorStyles.boldLabel);
+        EditorGUI.LabelField(labelRect, $"{content.text} ({title})", EditorStyles.boldLabel);
     }
 
     void DrawSeparator(Rect rect)
@@ -1091,6 +1378,63 @@ internal class PlayModeOverrideComparePopup : PopupWindowContent
                 : new Color(0.6f, 0.6f, 0.6f);
             EditorGUI.DrawRect(rect, separatorColor);
         }
+    }
+
+    void DrawFooter(Rect rect)
+    {
+        GUILayout.BeginArea(rect);
+        GUILayout.FlexibleSpace();
+
+        GUILayout.BeginHorizontal();
+        GUILayout.FlexibleSpace();
+
+        if (GUILayout.Button("Revert", GUILayout.Width(120f), GUILayout.Height(28f)))
+        {
+            RevertChanges();
+            editorWindow.Close();
+        }
+
+        GUILayout.Space(8);
+
+        if (GUILayout.Button("Apply", GUILayout.Width(120f), GUILayout.Height(28f)))
+        {
+            // Changes are already applied (we're in play mode editing live)
+            Debug.Log($"Applied changes to {liveComponent.GetType().Name}");
+            editorWindow.Close();
+        }
+
+        GUILayout.Space(8);
+        GUILayout.EndHorizontal();
+
+        GUILayout.Space(6);
+        GUILayout.EndArea();
+    }
+
+    void RevertChanges()
+    {
+        if (snapshotComponent == null) return;
+
+        // Copy all values from snapshot to live component
+        SerializedObject sourceSO = new SerializedObject(snapshotComponent);
+        SerializedObject targetSO = new SerializedObject(liveComponent);
+
+        SerializedProperty sourceProp = sourceSO.GetIterator();
+        bool enterChildren = true;
+
+        while (sourceProp.NextVisible(enterChildren))
+        {
+            enterChildren = false;
+            if (sourceProp.name == "m_Script") continue;
+
+            SerializedProperty targetProp = targetSO.FindProperty(sourceProp.propertyPath);
+            if (targetProp != null && targetProp.propertyType == sourceProp.propertyType)
+            {
+                targetSO.CopyFromSerializedProperty(sourceProp);
+            }
+        }
+
+        targetSO.ApplyModifiedProperties();
+        Debug.Log($"Reverted {liveComponent.GetType().Name} to original values");
     }
 
     public override void OnClose()
