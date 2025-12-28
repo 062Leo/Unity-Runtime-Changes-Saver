@@ -497,6 +497,7 @@ public class PlayModeChangesInspector
             Rect buttonRect = GUILayoutUtility.GetRect(buttonContent, EditorStyles.miniButton, GUILayout.Width(140f));
             if (GUI.Button(buttonRect, buttonContent, EditorStyles.miniButton))
             {
+                PlayModeOverridesWindow.Open(go, id, original, current, changes);
                 //dualinspector
             }
         }
@@ -506,41 +507,41 @@ public class PlayModeChangesInspector
         EditorGUILayout.Space(2);
     }
 
-    internal static void DrawTransformBeforeAfter(GameObject go, int id, TransformSnapshot original, TransformSnapshot current, List<string> changes)
-    {
-        EditorGUILayout.BeginHorizontal();
+    //internal static void DrawTransformBeforeAfter(GameObject go, int id, TransformSnapshot original, TransformSnapshot current, List<string> changes)
+    //{
+    //    EditorGUILayout.BeginHorizontal();
 
-        EditorGUILayout.BeginVertical();
-        EditorGUILayout.LabelField("Before", EditorStyles.boldLabel);
-        using (new EditorGUI.DisabledScope(true))
-        {
-            DrawTransformSnapshotGUI(original, changes);
-        }
-        EditorGUILayout.EndVertical();
+    //    EditorGUILayout.BeginVertical();
+    //    EditorGUILayout.LabelField("Before", EditorStyles.boldLabel);
+    //    using (new EditorGUI.DisabledScope(true))
+    //    {
+    //        DrawTransformSnapshotGUI(original, changes);
+    //    }
+    //    EditorGUILayout.EndVertical();
 
-        EditorGUILayout.Space(10);
+    //    EditorGUILayout.Space(10);
 
-        EditorGUILayout.BeginVertical();
-        EditorGUILayout.BeginHorizontal();
-        EditorGUILayout.LabelField("After", EditorStyles.boldLabel);
-        GUILayout.FlexibleSpace();
-        if (GUILayout.Button("Revert", GUILayout.Width(70)))
-        {
-            RevertTransform(go.transform, original, changes);
-        }
-        if (GUILayout.Button("Apply", GUILayout.Width(70)))
-        {
-            PlayModeChangesTracker.ApplyAll(id, go);
-            PlayModeChangesTracker.PersistSelectedChangesForAll();
-        }
-        EditorGUILayout.EndHorizontal();
+    //    EditorGUILayout.BeginVertical();
+    //    EditorGUILayout.BeginHorizontal();
+    //    EditorGUILayout.LabelField("After", EditorStyles.boldLabel);
+    //    GUILayout.FlexibleSpace();
+    //    if (GUILayout.Button("Revert", GUILayout.Width(70)))
+    //    {
+    //        RevertTransform(go.transform, original, changes);
+    //    }
+    //    if (GUILayout.Button("Apply", GUILayout.Width(70)))
+    //    {
+    //        PlayModeChangesTracker.ApplyAll(id, go);
+    //        PlayModeChangesTracker.PersistSelectedChangesForAll();
+    //    }
+    //    EditorGUILayout.EndHorizontal();
 
-        DrawTransformCurrentGUI(go.transform, changes);
+    //    DrawTransformCurrentGUI(go.transform, changes);
 
-        EditorGUILayout.EndVertical();
+    //    EditorGUILayout.EndVertical();
 
-        EditorGUILayout.EndHorizontal();
-    }
+    //    EditorGUILayout.EndHorizontal();
+    //}
 
     private static void DrawTransformSnapshotGUI(TransformSnapshot snapshot, List<string> changedProps)
     {
