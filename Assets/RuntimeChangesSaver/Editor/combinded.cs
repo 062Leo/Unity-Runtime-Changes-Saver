@@ -478,8 +478,10 @@ public class PlayModeChangesInspector
             Rect buttonRect = GUILayoutUtility.GetRect(buttonContent, EditorStyles.miniButton, GUILayout.Width(140f));
             if (GUI.Button(buttonRect, buttonContent, EditorStyles.miniButton))
             {
-                PlayModeOverridesWindow.Open(go, id, original, current, changes);
-                //dualinspector
+                PopupWindow.Show(
+                     buttonRect,
+                     new PlayModeOverridesWindow(go)
+                 );
             }
         }
         GUILayout.FlexibleSpace();
@@ -597,134 +599,200 @@ public class PlayModeChangesInspector
         }
     }
 }
-public class PlayModeOverridesWindow : EditorWindow
+internal class PlayModeOverridesWindow : PopupWindowContent
 {
-    private GameObject _gameObject;
-    private int _instanceId;
-    private TransformSnapshot _original;
-    private TransformSnapshot _current;
-    private List<string> _changedProperties;
+    private readonly GameObject targetGO;
+    private Vector2 scroll;
 
-    private bool _showTransformComparison;
+    // Dummy-Liste – Frontend first
+    private readonly List<Component> changedComponents = new();
 
-    public static void Open(GameObject gameObject, int instanceId, TransformSnapshot original, TransformSnapshot current, List<string> changedProperties)
+    private const float RowHeight = 22f;
+
+    public PlayModeOverridesWindow(GameObject go)
     {
-        var window = GetWindow<PlayModeOverridesWindow>("Play Mode Overrides");
-        window._gameObject = gameObject;
-        window._instanceId = instanceId;
-        window._original = original;
-        window._current = current;
-        window._changedProperties = changedProperties;
-        window.position = new Rect(200, 200, 360f, 420f);
-        window.Show();
+        targetGO = go;
+
+        // FRONTEND: Demo → alle Components als "changed"
+        foreach (var c in go.GetComponents<Component>())
+        {
+            if (c != null)
+                changedComponents.Add(c);
+        }
     }
 
-    void OnGUI()
+    public override Vector2 GetWindowSize()
     {
-        // Obere Hälfte: Overrides-Header + Liste
+        return new Vector2(320, Mathf.Min(400, 40 + changedComponents.Count * RowHeight));
+    }
+
+    public override void OnGUI(Rect rect)
+    {
         DrawHeader();
 
-        GUILayout.Space(4);
-        GUILayout.Space(4);
-        DrawDemoTransformRow();
+        Rect listRect = new Rect(
+            rect.x,
+            rect.y + 28,
+            rect.width,
+            rect.height - 28
+        );
 
-        // Trennlinie zwischen oberem und unterem Bereich
-        GUILayout.Space(4);
-        Rect splitterRect = GUILayoutUtility.GetRect(1, 1, GUILayout.ExpandWidth(true));
-        EditorGUI.DrawRect(splitterRect, new Color(0.2f, 0.2f, 0.2f, 0.8f));
-
-        GUILayout.FlexibleSpace();
-
-        GUILayout.BeginHorizontal();
-        GUILayout.FlexibleSpace();
-
-        if (GUILayout.Button("Revert All", GUILayout.Width(120f)))
-        {
-            // noch keine funktion
-        }
-
-        if (GUILayout.Button("Apply All", GUILayout.Width(120f)))
-        {
-            // noch keine funktion
-        }
-
-        GUILayout.EndHorizontal();
-        GUILayout.Space(6);
+        DrawComponentList(listRect);
     }
 
     void DrawHeader()
     {
-        const float headerHeight = 60f;
-        const float leftMargin = 6f;
+        Rect header = GUILayoutUtility.GetRect(1, 24);
 
-        Rect headerRect = GUILayoutUtility.GetRect(20, 10000, headerHeight, headerHeight);
-
-        Color bgColor = EditorGUIUtility.isProSkin
-            ? new Color(0.5f, 0.5f, 0.5f, 0.2f)
-            : new Color(0.9f, 0.9f, 0.9f, 0.6f);
-        EditorGUI.DrawRect(headerRect, bgColor);
-
-        GUIStyle boldRight = new GUIStyle(EditorStyles.boldLabel)
-        {
-            alignment = TextAnchor.MiddleRight
-        };
-
-        GUIContent titleContent = new GUIContent("Review, Revert or Apply Overrides");
-        float titleWidth = boldRight.CalcSize(titleContent).x;
-        Rect titleRect = new Rect(headerRect.x + leftMargin, headerRect.y, titleWidth, headerRect.height);
-        titleRect.height = EditorGUIUtility.singleLineHeight;
-        GUI.Label(titleRect, titleContent, boldRight);
-
-        float labelWidth = EditorStyles.label.CalcSize(new GUIContent("on")).x;
-
-        Rect lineRect = headerRect;
-        lineRect.height = EditorGUIUtility.singleLineHeight;
-        lineRect.y += 20f;
-
-        Rect labelRect = new Rect(headerRect.x + leftMargin, lineRect.y, labelWidth, lineRect.height);
-        Rect contentRect = lineRect;
-        contentRect.xMin = labelRect.xMax;
-
-        GUI.Label(labelRect, "on", EditorStyles.label);
-        GUI.Label(contentRect, _gameObject != null ? _gameObject.name : "<none>", EditorStyles.label);
-
-        labelRect.y += EditorGUIUtility.singleLineHeight;
-        contentRect.y += EditorGUIUtility.singleLineHeight;
-
-        string stageName = "Play Mode";
-        if (_gameObject != null && _gameObject.scene.IsValid())
-            stageName = string.IsNullOrEmpty(_gameObject.scene.name) ? _gameObject.scene.path : _gameObject.scene.name;
-
-        GUI.Label(labelRect, "in", EditorStyles.label);
-        GUI.Label(contentRect, stageName, EditorStyles.label);
+        EditorGUI.LabelField(
+            new Rect(header.x + 6, header.y + 4, header.width, 16),
+            "Play Mode Overrides",
+            EditorStyles.boldLabel
+        );
     }
 
-    void DrawDemoTransformRow()
+    void DrawComponentList(Rect rect)
     {
-        const float rowHeight = 18f;
+        Rect viewRect = new Rect(0, 0, rect.width - 16, changedComponents.Count * RowHeight);
 
-        Rect rowRect = GUILayoutUtility.GetRect(100, 10000, rowHeight, rowHeight);
+        scroll = GUI.BeginScrollView(rect, scroll, viewRect);
 
-        if (Event.current.type == EventType.Repaint)
+        for (int i = 0; i < changedComponents.Count; i++)
         {
-            EditorGUI.DrawRect(rowRect, new Color(0.22f, 0.22f, 0.22f, EditorGUIUtility.isProSkin ? 0.6f : 0.2f));
+            Rect row = new Rect(
+                0,
+                i * RowHeight,
+                viewRect.width,
+                RowHeight
+            );
+
+            DrawRow(row, changedComponents[i]);
         }
 
-        Rect labelRect = rowRect;
-        labelRect.xMin += 16f;
-        GUI.Label(labelRect, "Transform", EditorStyles.label);
+        GUI.EndScrollView();
+    }
 
-        if (Event.current.type == EventType.MouseDown && rowRect.Contains(Event.current.mousePosition))
+    void DrawRow(Rect rowRect, Component component)
+    {
+        if (Event.current.type == EventType.Repaint)
+            EditorStyles.helpBox.Draw(rowRect, false, false, false, false);
+
+        var content = EditorGUIUtility.ObjectContent(component, component.GetType());
+
+        Rect labelRect = new Rect(
+            rowRect.x + 6,
+            rowRect.y + 3,
+            rowRect.width - 12,
+            16
+        );
+
+        if (GUI.Button(labelRect, content, EditorStyles.label))
         {
-            if (Event.current.button == 0)
-            {
-                Event.current.Use();
-                _showTransformComparison = true;
-            }
+            // 👉 WICHTIG: Compare-Popup direkt unter der Zeile
+            PopupWindow.Show(
+                rowRect,
+                new PlayModeOverrideComparePopup(component)
+            );
         }
     }
 }
 
+
+internal class PlayModeOverrideComparePopup : PopupWindowContent
+{
+    private readonly Component liveComponent;
+    private Component snapshotComponent;
+
+    private Editor leftEditor;
+    private Editor rightEditor;
+
+    private Vector2 scroll;
+
+    private const float Splitter = 6f;
+
+    public PlayModeOverrideComparePopup(Component component)
+    {
+        liveComponent = component;
+        CreateSnapshotAndEditors();
+    }
+
+    void CreateSnapshotAndEditors()
+    {
+        var go = liveComponent.gameObject;
+        var snapshotGO = UnityEngine.Object.Instantiate(go);
+        snapshotGO.hideFlags = HideFlags.HideAndDontSave;
+
+        var type = liveComponent.GetType();
+        var originals = go.GetComponents(type);
+        var snaps = snapshotGO.GetComponents(type);
+
+        int index = Array.IndexOf(originals, liveComponent);
+        if (index >= 0 && index < snaps.Length)
+            snapshotComponent = snaps[index];
+
+        leftEditor = Editor.CreateEditor(snapshotComponent);
+        rightEditor = Editor.CreateEditor(liveComponent);
+    }
+
+    public override Vector2 GetWindowSize()
+    {
+        return new Vector2(700, 500);
+    }
+
+    public override void OnGUI(Rect rect)
+    {
+        Rect contentRect = rect;
+
+        float columnWidth = (contentRect.width - Splitter) * 0.5f;
+
+        Rect leftRect = new Rect(0, 0, columnWidth, contentRect.height);
+        Rect rightRect = new Rect(columnWidth + Splitter, 0, columnWidth, contentRect.height);
+
+        Rect viewRect = new Rect(0, 0, contentRect.width - 16, 2000);
+
+        scroll = GUI.BeginScrollView(contentRect, scroll, viewRect);
+
+        DrawColumn(leftRect, leftEditor, false);
+        DrawColumn(rightRect, rightEditor, true);
+
+        GUI.EndScrollView();
+    }
+
+    void DrawColumn(Rect rect, Editor editor, bool editable)
+    {
+        GUI.BeginGroup(rect);
+        GUI.enabled = editable;
+
+        DrawComponentHeader(editor.target);
+        editor.OnInspectorGUI();
+
+        GUI.enabled = true;
+        GUI.EndGroup();
+    }
+
+    void DrawComponentHeader(UnityEngine.Object target)
+    {
+        var content = EditorGUIUtility.ObjectContent(target, target.GetType());
+        Rect r = GUILayoutUtility.GetRect(16, 22);
+
+        EditorStyles.helpBox.Draw(r, false, false, false, false);
+
+        if (content.image)
+            GUI.DrawTexture(new Rect(r.x + 6, r.y + 3, 16, 16), content.image);
+
+        EditorGUI.LabelField(
+            new Rect(r.x + 26, r.y + 3, r.width, 16),
+            content.text,
+            EditorStyles.boldLabel
+        );
+    }
+
+    public override void OnClose()
+    {
+        if (leftEditor) UnityEngine.Object.DestroyImmediate(leftEditor);
+        if (rightEditor) UnityEngine.Object.DestroyImmediate(rightEditor);
+    }
+}
 
 internal class PlayModeOverridesPopup : PopupWindowContent
 {
@@ -843,161 +911,69 @@ internal class PlayModeOverridesPopup : PopupWindowContent
                     var transform = _gameObject.transform;
                     if (transform != null)
                     {
-                        DualInspectorWindow.ShowForComponent(transform);
+                        PopupWindow.Show(
+                            rowRect,
+                            new DualInspectorPopup(_gameObject.transform)
+                        );
+
                     }
                 }
             }
         }
     }
 }
-
-// -------------------------
-// DualInspectorWindow
-// -------------------------
-
-public class DualInspectorWindow : EditorWindow
+internal class DualInspectorPopup : PopupWindowContent
 {
-    private GameObject targetGO;
+    private readonly Component targetComponent;
     private GameObject snapshotGO;
 
-    private bool singleComponentMode;
-    private Component singleTargetComponent;
-    private Component singleSnapshotComponent;
+    private Editor leftEditor;
+    private Editor rightEditor;
 
-    private readonly List<Editor> leftEditors = new();
-    private readonly List<Editor> rightEditors = new();
+    private Vector2 scroll;
 
-    private Vector2 sharedScroll;
-
-    private const float ToolbarHeight = 20f;
     private const float Splitter = 6f;
-    private const float ScrollbarWidth = 16f;
 
-    [MenuItem("Tools/Dual Inspector")]
-    static void Open()
+    public DualInspectorPopup(Component component)
     {
-        GetWindow<DualInspectorWindow>("Dual Inspector");
+        targetComponent = component;
+        BuildEditors();
     }
 
-    void OnEnable()
+    void BuildEditors()
     {
-        Selection.selectionChanged += Rebuild;
-        Rebuild();
-    }
-
-    void OnDisable()
-    {
-        Selection.selectionChanged -= Rebuild;
-        Cleanup();
-    }
-
-    void Cleanup()
-    {
-        foreach (var e in leftEditors) DestroyImmediate(e);
-        foreach (var e in rightEditors) DestroyImmediate(e);
-        leftEditors.Clear();
-        rightEditors.Clear();
-
-        if (snapshotGO != null)
-            DestroyImmediate(snapshotGO);
-    }
-
-    void Rebuild()
-    {
-        if (singleComponentMode)
-        {
-            if (singleTargetComponent != null)
-                BuildForSingleComponent(singleTargetComponent);
-            return;
-        }
-
-        Cleanup();
-
-        targetGO = Selection.activeGameObject;
-        if (targetGO == null)
+        if (targetComponent == null)
             return;
 
-        snapshotGO = Instantiate(targetGO);
+        var go = targetComponent.gameObject;
+
+        snapshotGO = UnityEngine.Object.Instantiate(go);
         snapshotGO.hideFlags = HideFlags.HideAndDontSave;
 
-        BuildEditors(snapshotGO, leftEditors);
-        BuildEditors(targetGO, rightEditors);
-
-        sharedScroll = Vector2.zero;
-        Repaint();
-    }
-
-    public static void ShowForComponent(Component component)
-    {
-        if (component == null)
-            return;
-
-        var window = GetWindow<DualInspectorWindow>("Dual Inspector");
-        window.singleComponentMode = true;
-        window.singleTargetComponent = component;
-        window.BuildForSingleComponent(component);
-        window.Focus();
-    }
-
-    void BuildForSingleComponent(Component component)
-    {
-        Cleanup();
-
-        singleTargetComponent = component;
-        targetGO = component != null ? component.gameObject : null;
-
-        if (targetGO == null || component == null)
-            return;
-
-        snapshotGO = Instantiate(targetGO);
-        snapshotGO.hideFlags = HideFlags.HideAndDontSave;
-
-        var type = component.GetType();
-        var targetComponents = targetGO.GetComponents(type);
+        var type = targetComponent.GetType();
+        var targetComponents = go.GetComponents(type);
         var snapshotComponents = snapshotGO.GetComponents(type);
-        int index = Array.IndexOf(targetComponents, component);
 
-        singleSnapshotComponent = null;
+        int index = Array.IndexOf(targetComponents, targetComponent);
         if (index >= 0 && index < snapshotComponents.Length)
         {
-            singleSnapshotComponent = snapshotComponents[index];
+            leftEditor = Editor.CreateEditor(snapshotComponents[index]);
         }
 
-        if (singleSnapshotComponent != null)
-            leftEditors.Add(Editor.CreateEditor(singleSnapshotComponent));
-
-        rightEditors.Add(Editor.CreateEditor(component));
-
-        sharedScroll = Vector2.zero;
-        Repaint();
+        rightEditor = Editor.CreateEditor(targetComponent);
     }
 
-    void BuildEditors(GameObject go, List<Editor> list)
+    public override Vector2 GetWindowSize()
     {
-        foreach (var c in go.GetComponents<Component>())
-        {
-            if (c == null) continue;
-            list.Add(Editor.CreateEditor(c));
-        }
+        return new Vector2(700, 500);
     }
 
-    void OnGUI()
+    public override void OnGUI(Rect rect)
     {
-        if (targetGO == null)
-        {
-            EditorGUILayout.LabelField("No GameObject selected.");
+        if (leftEditor == null || rightEditor == null)
             return;
-        }
 
-        DrawToolbar();
-
-        Rect contentRect = new Rect(
-            0,
-            ToolbarHeight,
-            position.width,
-            position.height - ToolbarHeight
-        );
-
+        Rect contentRect = rect;
         float columnWidth = (contentRect.width - Splitter) * 0.5f;
 
         Rect leftRect = new Rect(
@@ -1014,70 +990,28 @@ public class DualInspectorWindow : EditorWindow
             contentRect.height
         );
 
-        DrawInspectorColumn(leftRect, leftEditors, editable: false);
-        DrawInspectorColumn(rightRect, rightEditors, editable: true);
-    }
-
-    void DrawToolbar()
-    {
-        Rect rect = new Rect(0, 0, position.width, ToolbarHeight);
-        GUILayout.BeginArea(rect, EditorStyles.toolbar);
-
-        GUILayout.FlexibleSpace();
-
-        if (GUILayout.Button("Revert", EditorStyles.toolbarButton))
-        {
-            Undo.RecordObject(targetGO, "Revert Changes");
-            EditorUtility.CopySerialized(snapshotGO, targetGO);
-            Rebuild();
-        }
-
-        if (GUILayout.Button("Apply", EditorStyles.toolbarButton))
-        {
-            Rebuild();
-        }
-
-        GUILayout.EndArea();
-    }
-
-    void DrawInspectorColumn(
-        Rect rect,
-        List<Editor> editors,
-        bool editable
-    )
-    {
-        GUI.Box(rect, GUIContent.none);
-
-        Rect viewRect = new Rect(
-            0,
-            0,
-            rect.width - ScrollbarWidth,
-            CalculateViewHeight(editors)
+        scroll = GUI.BeginScrollView(
+            contentRect,
+            scroll,
+            new Rect(0, 0, contentRect.width - 16, 2000)
         );
 
-        sharedScroll = GUI.BeginScrollView(rect, sharedScroll, viewRect);
-
-        GUI.enabled = editable;
-        GUILayout.BeginArea(viewRect);
-
-        foreach (var ed in editors)
-        {
-            if (ed == null) continue;
-
-            DrawHeader(ed.target);
-            ed.OnInspectorGUI();
-            GUILayout.Space(8);
-        }
-
-        GUILayout.EndArea();
-        GUI.enabled = true;
+        DrawColumn(leftRect, leftEditor, editable: false);
+        DrawColumn(rightRect, rightEditor, editable: true);
 
         GUI.EndScrollView();
     }
 
-    float CalculateViewHeight(List<Editor> editors)
+    void DrawColumn(Rect rect, Editor editor, bool editable)
     {
-        return Mathf.Max(1000, editors.Count * 120);
+        GUI.BeginGroup(rect);
+        GUI.enabled = editable;
+
+        DrawHeader(editor.target);
+        editor.OnInspectorGUI();
+
+        GUI.enabled = true;
+        GUI.EndGroup();
     }
 
     void DrawHeader(UnityEngine.Object target)
@@ -1099,7 +1033,15 @@ public class DualInspectorWindow : EditorWindow
             EditorStyles.boldLabel
         );
     }
+
+    public override void OnClose()
+    {
+        if (leftEditor) UnityEngine.Object.DestroyImmediate(leftEditor);
+        if (rightEditor) UnityEngine.Object.DestroyImmediate(rightEditor);
+        if (snapshotGO) UnityEngine.Object.DestroyImmediate(snapshotGO);
+    }
 }
+
 
 // -------------------------
 // PlayModeChangesLogWindow
