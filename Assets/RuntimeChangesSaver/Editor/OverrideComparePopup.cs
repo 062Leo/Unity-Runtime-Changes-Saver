@@ -34,14 +34,9 @@ internal class OverrideComparePopup : PopupWindowContent
 
         if (liveComponent is Transform)
         {
-            // Transform-Vergleich: Wenn es einen Eintrag im ScriptableObject-Store gibt,
-            // wird dieser sowohl im Play Mode als auch im Edit Mode für die linke Seite
-            // (Original/Baseline) verwendet. Nur wenn kein Store-Eintrag existiert,
-            // fällt der Play Mode auf die gespeicherten Snapshots zurück.
-
-            // Zuerst versuchen wir, einen passenden Eintrag im Transform-Store zu finden.
-            PlayModeTransformChangesStore.TransformChange storeMatch = null;
-            var store = PlayModeTransformChangesStore.LoadExisting();
+            
+            TransformChangesStore.TransformChange storeMatch = null;
+            var store = TransformChangesStore.LoadExisting();
             if (store != null)
             {
                 string scenePath = go.scene.path;
@@ -113,7 +108,7 @@ internal class OverrideComparePopup : PopupWindowContent
             {
                 // Kein Store-Eintrag vorhanden: Im Play Mode wie bisher über die
                 // gespeicherten Snapshots arbeiten (Originalzustand vor den Änderungen).
-                var originalSnapshot = PlayModeChangesTracker.GetSnapshot(go);
+                var originalSnapshot = ChangesTracker.GetSnapshot(go);
 
                 if (originalSnapshot != null)
                 {
@@ -183,8 +178,8 @@ internal class OverrideComparePopup : PopupWindowContent
             {
                 // Play Mode: zunächst versuchen wir – analog zu Transforms – einen passenden
                 // Eintrag im Component-Store zu finden (für bereits akzeptierte Overrides).
-                PlayModeComponentChangesStore.ComponentChange match = null;
-                var compStore = PlayModeComponentChangesStore.LoadExisting();
+                ComponentChangesStore.ComponentChange match = null;
+                var compStore = ComponentChangesStore.LoadExisting();
 
                 if (compStore != null)
                 {
@@ -248,8 +243,8 @@ internal class OverrideComparePopup : PopupWindowContent
                 else
                 {
                     // Fallback: wie bisher über den ComponentSnapshot arbeiten.
-                    string compKey = PlayModeChangesTracker.GetComponentKey(liveComponent);
-                    var snapshot = PlayModeChangesTracker.GetComponentSnapshot(go, compKey);
+                    string compKey = ChangesTracker.GetComponentKey(liveComponent);
+                    var snapshot = ChangesTracker.GetComponentSnapshot(go, compKey);
 
                     if (snapshot != null)
                     {
@@ -275,8 +270,8 @@ internal class OverrideComparePopup : PopupWindowContent
             else
             {
                 // Edit Mode (z.B. Browser): Originalwerte aus dem Component-Store holen.
-                var compStore = PlayModeComponentChangesStore.LoadExisting();
-                PlayModeComponentChangesStore.ComponentChange match = null;
+                var compStore = ComponentChangesStore.LoadExisting();
+                ComponentChangesStore.ComponentChange match = null;
 
                 if (compStore != null)
                 {
@@ -623,7 +618,7 @@ internal class OverrideComparePopup : PopupWindowContent
         EditorGUI.EndDisabledGroup();
     }
 
-    void DrawColumnHeader(Rect rect, UnityEngine.Object target, string title)
+    void DrawColumnHeader(Rect rect, Object target, string title)
     {
         if (Event.current.type == EventType.Repaint)
         {
@@ -675,11 +670,11 @@ internal class OverrideComparePopup : PopupWindowContent
             // den späteren Übergang in den Edit Mode persistieren.
             if (liveComponent is Transform || liveComponent is RectTransform)
             {
-                PlayModeChangesTracker.AcceptTransformChanges(liveComponent.gameObject);
+                ChangesTracker.AcceptTransformChanges(liveComponent.gameObject);
             }
             else
             {
-                PlayModeChangesTracker.AcceptComponentChanges(liveComponent);
+                ChangesTracker.AcceptComponentChanges(liveComponent);
             }
 
             RefreshBrowserIfOpen();
@@ -740,11 +735,11 @@ internal class OverrideComparePopup : PopupWindowContent
         {
             if (liveComponent is Transform || liveComponent is RectTransform)
             {
-                PlayModeChangesTracker.ResetTransformBaseline(liveComponent.gameObject);
+                ChangesTracker.ResetTransformBaseline(liveComponent.gameObject);
             }
             else
             {
-                PlayModeChangesTracker.ResetComponentBaseline(liveComponent);
+                ChangesTracker.ResetComponentBaseline(liveComponent);
             }
         }
 
@@ -761,7 +756,7 @@ internal class OverrideComparePopup : PopupWindowContent
 
             if (liveComponent is Transform || liveComponent is RectTransform)
             {
-                var tStore = PlayModeTransformChangesStore.LoadExisting();
+                var tStore = TransformChangesStore.LoadExisting();
                 if (tStore != null)
                 {
                     int index = tStore.changes.FindIndex(c => c.scenePath == scenePath && c.objectPath == objectPath);
@@ -776,7 +771,7 @@ internal class OverrideComparePopup : PopupWindowContent
             }
             else
             {
-                var cStore = PlayModeComponentChangesStore.LoadExisting();
+                var cStore = ComponentChangesStore.LoadExisting();
                 if (cStore != null)
                 {
                     var type = liveComponent.GetType();
@@ -807,16 +802,16 @@ internal class OverrideComparePopup : PopupWindowContent
 
     private static void RefreshBrowserIfOpen()
     {
-        if (EditorWindow.HasOpenInstances<PlayModeOverridesBrowserWindow>())
+        if (EditorWindow.HasOpenInstances<OverridesBrowserWindow>())
         {
-            PlayModeOverridesBrowserWindow.Open();
+            OverridesBrowserWindow.Open();
         }
     }
 
     public override void OnClose()
     {
-        if (leftEditor) UnityEngine.Object.DestroyImmediate(leftEditor);
-        if (rightEditor) UnityEngine.Object.DestroyImmediate(rightEditor);
-        if (snapshotGO) UnityEngine.Object.DestroyImmediate(snapshotGO);
+        if (leftEditor) Object.DestroyImmediate(leftEditor);
+        if (rightEditor) Object.DestroyImmediate(rightEditor);
+        if (snapshotGO) Object.DestroyImmediate(snapshotGO);
     }
 }

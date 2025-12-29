@@ -4,7 +4,7 @@ using System.IO;
 using UnityEditor;
 using UnityEngine;
 
-public class PlayModeTransformChangesStore : ScriptableObject
+public class TransformChangesStore : ScriptableObject
 {
     [Serializable] 
     public class TransformChange
@@ -46,13 +46,13 @@ public class PlayModeTransformChangesStore : ScriptableObject
 
     public List<TransformChange> changes = new List<TransformChange>();
 
-    public static PlayModeTransformChangesStore LoadExisting()
+    public static TransformChangesStore LoadExisting()
     {
         string[] guids = AssetDatabase.FindAssets("t:PlayModeTransformChangesStore");
         if (guids != null && guids.Length > 0)
         {
             string path = AssetDatabase.GUIDToAssetPath(guids[0]);
-            var store = AssetDatabase.LoadAssetAtPath<PlayModeTransformChangesStore>(path);
+            var store = AssetDatabase.LoadAssetAtPath<TransformChangesStore>(path);
             Debug.Log($"[TransformDebug][Store.LoadExisting] Found existing store at '{path}', changeCount={store.changes.Count}");
             return store;
         }
@@ -60,13 +60,13 @@ public class PlayModeTransformChangesStore : ScriptableObject
         return null;
     }
 
-    public static PlayModeTransformChangesStore LoadOrCreate()
+    public static TransformChangesStore LoadOrCreate()
     {
         var store = LoadExisting();
         if (store == null)
         {
             string assetPath = GetDefaultAssetPath();
-            store = CreateInstance<PlayModeTransformChangesStore>();
+            store = CreateInstance<TransformChangesStore>();
             AssetDatabase.CreateAsset(store, assetPath);
             AssetDatabase.SaveAssets();
         }

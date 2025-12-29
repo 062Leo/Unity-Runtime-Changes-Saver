@@ -32,7 +32,7 @@ public class ChangesInspector
             return;
 
         // Check if any component has changes
-        var changedComponents = PlayModeChangesTracker.GetChangedComponents(go);
+        var changedComponents = ChangesTracker.GetChangedComponents(go);
         bool hasChanges = changedComponents.Count > 0;
 
         bool hasTransformChange = false;
@@ -55,7 +55,7 @@ public class ChangesInspector
             Rect buttonRect = GUILayoutUtility.GetRect(buttonContent, EditorStyles.miniButton, GUILayout.Width(140f));
             if (GUI.Button(buttonRect, buttonContent, EditorStyles.miniButton))
             {
-                PopupWindow.Show(buttonRect, new PlayModeOverridesWindow(go));
+                PopupWindow.Show(buttonRect, new OverridesWindow(go));
             }
         }
 

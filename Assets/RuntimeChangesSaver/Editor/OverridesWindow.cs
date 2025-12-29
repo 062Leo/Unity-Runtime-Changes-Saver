@@ -14,7 +14,7 @@ internal class OverridesWindow : PopupWindowContent
     public OverridesWindow(GameObject go)
     {
         targetGO = go;
-        changedComponents = PlayModeChangesTracker.GetChangedComponents(go);
+        changedComponents = ChangesTracker.GetChangedComponents(go);
     }
 
     public override Vector2 GetWindowSize()
@@ -84,7 +84,7 @@ internal class OverridesWindow : PopupWindowContent
             bool isTransform = component is Transform;
             bool isRectTransform = component is RectTransform;
             Debug.Log($"[TransformDebug][OverridesWindow.RowClick] GO='{targetGO.name}', Component='{component.GetType().Name}', isTransform={isTransform}, isRectTransform={isRectTransform}");
-            PopupWindow.Show(rowRect, new PlayModeOverrideComparePopup(component));
+            PopupWindow.Show(rowRect, new OverrideComparePopup(component));
         }
     }
 
@@ -127,8 +127,8 @@ internal class OverridesWindow : PopupWindowContent
 
     void RevertAllChanges()
     {
-        string key = PlayModeChangesTracker.GetGameObjectKey(targetGO);
-        var originalSnapshot = PlayModeChangesTracker.GetSnapshot(targetGO);
+        string key = ChangesTracker.GetGameObjectKey(targetGO);
+        var originalSnapshot = ChangesTracker.GetSnapshot(targetGO);
 
         if (originalSnapshot != null)
         {
@@ -160,8 +160,8 @@ internal class OverridesWindow : PopupWindowContent
         {
             if (comp is Transform) continue;
 
-            string compKey = PlayModeChangesTracker.GetComponentKey(comp);
-            var snapshot = PlayModeChangesTracker.GetComponentSnapshot(targetGO, compKey);
+            string compKey = ChangesTracker.GetComponentKey(comp);
+            var snapshot = ChangesTracker.GetComponentSnapshot(targetGO, compKey);
 
             if (snapshot != null)
             {
@@ -189,7 +189,7 @@ internal class OverridesWindow : PopupWindowContent
 
         if (hasTransformChange)
         {
-            PlayModeChangesTracker.AcceptTransformChanges(targetGO);
+            ChangesTracker.AcceptTransformChanges(targetGO);
         }
 
         // Nicht-Transform-Komponenten ebenfalls annehmen
@@ -198,7 +198,7 @@ internal class OverridesWindow : PopupWindowContent
             if (comp == null || comp is Transform)
                 continue;
 
-            PlayModeChangesTracker.AcceptComponentChanges(comp);
+            ChangesTracker.AcceptComponentChanges(comp);
         }
 
         Debug.Log($"[TransformDebug][OverridesWindow.ApplyAll] Accepted all changes on GO='{targetGO.name}' (will be applied when exiting play mode)");
@@ -244,9 +244,9 @@ internal class OverridesWindow : PopupWindowContent
 
     private static void RefreshBrowserIfOpen()
     {
-        if (EditorWindow.HasOpenInstances<PlayModeOverridesBrowserWindow>())
+        if (EditorWindow.HasOpenInstances<OverridesBrowserWindow>())
         {
-            PlayModeOverridesBrowserWindow.Open();
+            OverridesBrowserWindow.Open();
         }
     }
 }

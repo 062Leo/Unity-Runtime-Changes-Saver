@@ -69,13 +69,13 @@ public static class ChangesTracker
             case PlayModeStateChange.ExitingEditMode:
                 // Beim Start in den Play Mode immer den persistenten Store leeren,
                 // damit wir nur Änderungen aus der aktuellen Session übernehmen.
-                var transformStoreOnEnterPlay = PlayModeTransformChangesStore.LoadExisting();
+                var transformStoreOnEnterPlay = TransformChangesStore.LoadExisting();
                 if (transformStoreOnEnterPlay != null)
                 {
                     transformStoreOnEnterPlay.Clear();
                 }
 
-                var componentStoreOnEnterPlay = PlayModeComponentChangesStore.LoadExisting();
+                var componentStoreOnEnterPlay = ComponentChangesStore.LoadExisting();
                 if (componentStoreOnEnterPlay != null)
                 {
                     componentStoreOnEnterPlay.Clear();
@@ -405,7 +405,7 @@ public static class ChangesTracker
 
     private static void RecordSelectedChangesToStore()
     {
-        var store = PlayModeTransformChangesStore.LoadOrCreate();
+        var store = TransformChangesStore.LoadOrCreate();
         store.Clear();
 
         if (selectedProperties.Count == 0)
@@ -449,7 +449,7 @@ public static class ChangesTracker
             if (selectedAndChanged.Count == 0)
                 continue;
 
-            var change = new PlayModeTransformChangesStore.TransformChange
+            var change = new TransformChangesStore.TransformChange
             {
                 scenePath = go.scene.path,
                 objectPath = goPath,
@@ -510,7 +510,7 @@ public static class ChangesTracker
 
     private static void RecordComponentChangeToStore(Component comp, string goKey, string compKey, ComponentSnapshot originalSnapshot)
     {
-        var store = PlayModeComponentChangesStore.LoadOrCreate();
+        var store = ComponentChangesStore.LoadOrCreate();
 
         string scenePath = comp.gameObject.scene.path;
         string objectPath = GetGameObjectPath(comp.transform);
@@ -577,7 +577,7 @@ public static class ChangesTracker
             }
         }
 
-        var change = new PlayModeComponentChangesStore.ComponentChange
+        var change = new ComponentChangesStore.ComponentChange
         {
             scenePath = scenePath,
             objectPath = objectPath,
@@ -781,7 +781,7 @@ public static class ChangesTracker
         // PlayModeTransformChangesStore persistiert. Dies überlebt
         // Domain Reloads besser als statische Dictionaries.
 
-        var store = PlayModeTransformChangesStore.LoadExisting();
+        var store = TransformChangesStore.LoadExisting();
         if (store != null && store.changes.Count > 0)
         {
             foreach (var change in store.changes)
@@ -841,7 +841,7 @@ public static class ChangesTracker
         }
 
         // Nicht-Transform-Komponenten über einen separaten Store anwenden
-        var compStore = PlayModeComponentChangesStore.LoadExisting();
+        var compStore = ComponentChangesStore.LoadExisting();
         if (compStore != null && compStore.changes.Count > 0)
         {
             foreach (var change in compStore.changes)
@@ -949,7 +949,7 @@ public static class ChangesTracker
 
     private static void RecordTransformChangeToStore(GameObject go, TransformSnapshot original, TransformSnapshot current)
     {
-        var store = PlayModeTransformChangesStore.LoadOrCreate();
+        var store = TransformChangesStore.LoadOrCreate();
 
         string scenePath = go.scene.path;
         string objectPath = GetGameObjectPath(go.transform);
@@ -1028,7 +1028,7 @@ public static class ChangesTracker
             }
         }
 
-        var change = new PlayModeTransformChangesStore.TransformChange
+        var change = new TransformChangesStore.TransformChange
         {
             scenePath = scenePath,
             objectPath = objectPath,
@@ -1072,7 +1072,7 @@ public static class ChangesTracker
         AssetDatabase.SaveAssets();
     }
 
-    private static void ApplyPropertyToTransform(Transform t, RectTransform rt, PlayModeTransformChangesStore.TransformChange change, string prop)
+    private static void ApplyPropertyToTransform(Transform t, RectTransform rt, TransformChangesStore.TransformChange change, string prop)
     {
         switch (prop)
         {

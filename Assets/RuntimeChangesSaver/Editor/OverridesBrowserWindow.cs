@@ -73,7 +73,7 @@ public class OverridesBrowserWindow : EditorWindow
             // Zusätzlich: bereits akzeptierte Overrides aus den ScriptableObject-Stores anzeigen,
             // damit sie auch während des Play Modes im Browser sichtbar sind.
 
-            var transformStore = PlayModeTransformChangesStore.LoadExisting();
+            var transformStore = TransformChangesStore.LoadExisting();
             if (transformStore != null)
             {
                 foreach (var change in transformStore.changes)
@@ -107,7 +107,7 @@ public class OverridesBrowserWindow : EditorWindow
                 }
             }
 
-            var compStore = PlayModeComponentChangesStore.LoadExisting();
+            var compStore = ComponentChangesStore.LoadExisting();
             if (compStore != null)
             {
                 foreach (var change in compStore.changes)
@@ -159,7 +159,7 @@ public class OverridesBrowserWindow : EditorWindow
             // um die zuletzt akzeptierten Änderungen anzuzeigen.
             var sceneMap = new Dictionary<Scene, Dictionary<GameObject, GameObjectEntry>>();
 
-            var transformStore = PlayModeTransformChangesStore.LoadExisting();
+            var transformStore = TransformChangesStore.LoadExisting();
             if (transformStore != null)
             {
                 foreach (var change in transformStore.changes)
@@ -168,7 +168,7 @@ public class OverridesBrowserWindow : EditorWindow
                 }
             }
 
-            var compStore = PlayModeComponentChangesStore.LoadExisting();
+            var compStore = ComponentChangesStore.LoadExisting();
             if (compStore != null)
             {
                 foreach (var change in compStore.changes)
@@ -193,7 +193,7 @@ public class OverridesBrowserWindow : EditorWindow
 
     private void CollectChangedGameObjectsRecursive(GameObject go, List<GameObjectEntry> list)
     {
-        var changed = PlayModeChangesTracker.GetChangedComponents(go);
+        var changed = ChangesTracker.GetChangedComponents(go);
         if (changed != null && changed.Count > 0)
         {
             var entry = new GameObjectEntry
@@ -211,7 +211,7 @@ public class OverridesBrowserWindow : EditorWindow
         }
     }
 
-    private void AddTransformChangeToSceneMap(Dictionary<Scene, Dictionary<GameObject, GameObjectEntry>> sceneMap, PlayModeTransformChangesStore.TransformChange change)
+    private void AddTransformChangeToSceneMap(Dictionary<Scene, Dictionary<GameObject, GameObjectEntry>> sceneMap, TransformChangesStore.TransformChange change)
     {
         var scene = GetSceneByPathOrName(change.scenePath);
         if (!scene.IsValid() || !scene.isLoaded)
@@ -239,7 +239,7 @@ public class OverridesBrowserWindow : EditorWindow
         }
     }
 
-    private void AddComponentChangeToSceneMap(Dictionary<Scene, Dictionary<GameObject, GameObjectEntry>> sceneMap, PlayModeComponentChangesStore.ComponentChange change)
+    private void AddComponentChangeToSceneMap(Dictionary<Scene, Dictionary<GameObject, GameObjectEntry>> sceneMap, ComponentChangesStore.ComponentChange change)
     {
         var scene = GetSceneByPathOrName(change.scenePath);
         if (!scene.IsValid() || !scene.isLoaded)
@@ -389,7 +389,7 @@ public class OverridesBrowserWindow : EditorWindow
                         // Popup immer direkt unterhalb der Button-Zeile öffnen
                         Rect buttonRect = GUILayoutUtility.GetLastRect();
                         Rect popupRect = new Rect(buttonRect.x, buttonRect.yMax, buttonRect.width, 0f);
-                        PopupWindow.Show(popupRect, new PlayModeOverrideComparePopup(comp));
+                        PopupWindow.Show(popupRect, new OverrideComparePopup(comp));
                     }
                     EditorGUILayout.ObjectField(comp, typeof(Component), true);
                     EditorGUILayout.EndHorizontal();
