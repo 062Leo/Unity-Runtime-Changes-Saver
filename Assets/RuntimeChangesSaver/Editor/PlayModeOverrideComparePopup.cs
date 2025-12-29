@@ -32,13 +32,85 @@ internal class PlayModeOverrideComparePopup : PopupWindowContent
 
         if (liveComponent is Transform)
         {
-            // Transform-Vergleich: Im Play Mode basieren wir auf den Snapshots im
-            // PlayModeChangesTracker. Im Edit Mode (z.B. wenn der Browser geöffnet ist)
-            // verwenden wir die im ScriptableObject gespeicherten Originalwerte.
+            // Transform-Vergleich: Wenn es einen Eintrag im ScriptableObject-Store gibt,
+            // wird dieser sowohl im Play Mode als auch im Edit Mode für die linke Seite
+            // (Original/Baseline) verwendet. Nur wenn kein Store-Eintrag existiert,
+            // fällt der Play Mode auf die gespeicherten Snapshots zurück.
 
-            if (Application.isPlaying)
+            // Zuerst versuchen wir, einen passenden Eintrag im Transform-Store zu finden.
+            PlayModeTransformChangesStore.TransformChange storeMatch = null;
+            var store = PlayModeTransformChangesStore.LoadExisting();
+            if (store != null)
             {
-                // Play Mode: wie bisher über die gespeicherten Snapshots arbeiten.
+                string scenePath = go.scene.path;
+                if (string.IsNullOrEmpty(scenePath))
+                    scenePath = go.scene.name;
+
+                string objectPath = GetGameObjectPathForPopup(go.transform);
+
+                foreach (var c in store.changes)
+                {
+                    if (c.scenePath == scenePath && c.objectPath == objectPath)
+                    {
+                        storeMatch = c;
+                        break;
+                    }
+                }
+            }
+
+            if (storeMatch != null)
+            {
+                var change = storeMatch;
+
+                bool useOriginal = change.hasOriginalValues;
+
+                Vector3 basePos = useOriginal ? change.originalPosition : change.position;
+                Quaternion baseRot = useOriginal ? change.originalRotation : change.rotation;
+                Vector3 baseScale = useOriginal ? change.originalScale : change.scale;
+
+                Vector2 baseAnchoredPos = useOriginal ? change.originalAnchoredPosition : change.anchoredPosition;
+                Vector3 baseAnchoredPos3D = useOriginal ? change.originalAnchoredPosition3D : change.anchoredPosition3D;
+                Vector2 baseAnchorMin = useOriginal ? change.originalAnchorMin : change.anchorMin;
+                Vector2 baseAnchorMax = useOriginal ? change.originalAnchorMax : change.anchorMax;
+                Vector2 basePivot = useOriginal ? change.originalPivot : change.pivot;
+                Vector2 baseSizeDelta = useOriginal ? change.originalSizeDelta : change.sizeDelta;
+                Vector2 baseOffsetMin = useOriginal ? change.originalOffsetMin : change.offsetMin;
+                Vector2 baseOffsetMax = useOriginal ? change.originalOffsetMax : change.offsetMax;
+
+                if (change.isRectTransform && liveComponent is RectTransform)
+                {
+                    snapshotComponent = snapshotGO.AddComponent<RectTransform>();
+                }
+                else
+                {
+                    snapshotComponent = snapshotGO.transform;
+                }
+
+                if (snapshotComponent is RectTransform snapshotRT)
+                {
+                    snapshotRT.anchoredPosition = baseAnchoredPos;
+                    snapshotRT.anchoredPosition3D = baseAnchoredPos3D;
+                    snapshotRT.anchorMin = baseAnchorMin;
+                    snapshotRT.anchorMax = baseAnchorMax;
+                    snapshotRT.pivot = basePivot;
+                    snapshotRT.sizeDelta = baseSizeDelta;
+                    snapshotRT.offsetMin = baseOffsetMin;
+                    snapshotRT.offsetMax = baseOffsetMax;
+                }
+
+                snapshotComponent.transform.localPosition = basePos;
+                snapshotComponent.transform.localRotation = baseRot;
+                snapshotComponent.transform.localScale = baseScale;
+
+                SerializedObject so = new SerializedObject(snapshotComponent);
+                so.Update();
+
+                Debug.Log($"[TransformDebug][ComparePopup.Create] Baseline from TransformStore for GO='{go.name}', useOriginal={useOriginal}, pos={basePos}, rot={baseRot.eulerAngles}, scale={baseScale}");
+            }
+            else if (Application.isPlaying)
+            {
+                // Kein Store-Eintrag vorhanden: Im Play Mode wie bisher über die
+                // gespeicherten Snapshots arbeiten (Originalzustand vor den Änderungen).
                 var originalSnapshot = PlayModeChangesTracker.GetSnapshot(go);
 
                 if (originalSnapshot != null)
@@ -95,81 +167,7 @@ internal class PlayModeOverrideComparePopup : PopupWindowContent
             }
             else
             {
-                // Edit Mode (z.B. Browser): Originalwerte aus dem persistenten Store holen.
-                var store = PlayModeTransformChangesStore.LoadExisting();
-                PlayModeTransformChangesStore.TransformChange match = null;
-
-                if (store != null)
-                {
-                    string scenePath = go.scene.path;
-                    if (string.IsNullOrEmpty(scenePath))
-                        scenePath = go.scene.name;
-
-                    string objectPath = GetGameObjectPathForPopup(go.transform);
-
-                    foreach (var c in store.changes)
-                    {
-                        if (c.scenePath == scenePath && c.objectPath == objectPath)
-                        {
-                            match = c;
-                            break;
-                        }
-                    }
-                }
-
-                if (match != null)
-                {
-                    var change = match;
-
-                    bool useOriginal = change.hasOriginalValues;
-
-                    Vector3 basePos = useOriginal ? change.originalPosition : change.position;
-                    Quaternion baseRot = useOriginal ? change.originalRotation : change.rotation;
-                    Vector3 baseScale = useOriginal ? change.originalScale : change.scale;
-
-                    Vector2 baseAnchoredPos = useOriginal ? change.originalAnchoredPosition : change.anchoredPosition;
-                    Vector3 baseAnchoredPos3D = useOriginal ? change.originalAnchoredPosition3D : change.anchoredPosition3D;
-                    Vector2 baseAnchorMin = useOriginal ? change.originalAnchorMin : change.anchorMin;
-                    Vector2 baseAnchorMax = useOriginal ? change.originalAnchorMax : change.anchorMax;
-                    Vector2 basePivot = useOriginal ? change.originalPivot : change.pivot;
-                    Vector2 baseSizeDelta = useOriginal ? change.originalSizeDelta : change.sizeDelta;
-                    Vector2 baseOffsetMin = useOriginal ? change.originalOffsetMin : change.offsetMin;
-                    Vector2 baseOffsetMax = useOriginal ? change.originalOffsetMax : change.offsetMax;
-
-                    if (change.isRectTransform && liveComponent is RectTransform)
-                    {
-                        snapshotComponent = snapshotGO.AddComponent<RectTransform>();
-                    }
-                    else
-                    {
-                        snapshotComponent = snapshotGO.transform;
-                    }
-
-                    if (snapshotComponent is RectTransform snapshotRT)
-                    {
-                        snapshotRT.anchoredPosition = baseAnchoredPos;
-                        snapshotRT.anchoredPosition3D = baseAnchoredPos3D;
-                        snapshotRT.anchorMin = baseAnchorMin;
-                        snapshotRT.anchorMax = baseAnchorMax;
-                        snapshotRT.pivot = basePivot;
-                        snapshotRT.sizeDelta = baseSizeDelta;
-                        snapshotRT.offsetMin = baseOffsetMin;
-                        snapshotRT.offsetMax = baseOffsetMax;
-                    }
-
-                    snapshotComponent.transform.localPosition = basePos;
-                    snapshotComponent.transform.localRotation = baseRot;
-                    snapshotComponent.transform.localScale = baseScale;
-
-                    SerializedObject so = new SerializedObject(snapshotComponent);
-                    so.Update();
-
-                    Debug.Log($"[TransformDebug][ComparePopup.Create] EditMode baseline from store for GO='{go.name}', useOriginal={useOriginal}, pos={basePos}, rot={baseRot.eulerAngles}, scale={baseScale}");
-                }
-                else
-                {
-                    Debug.Log($"[TransformDebug][ComparePopup.Create] No TransformChange in store for GO='{go.name}' (Edit Mode)");
-                }
+                Debug.Log($"[TransformDebug][ComparePopup.Create] No TransformChange in store for GO='{go.name}' (Edit Mode, no baseline available)");
             }
         }
         else

@@ -70,6 +70,89 @@ public class PlayModeOverridesBrowserWindow : EditorWindow
                     _sceneFoldouts[scene] = true;
                 }
             }
+
+            // Zusätzlich: bereits akzeptierte Overrides aus den ScriptableObject-Stores anzeigen,
+            // damit sie auch während des Play Modes im Browser sichtbar sind.
+
+            var transformStore = PlayModeTransformChangesStore.LoadExisting();
+            if (transformStore != null)
+            {
+                foreach (var change in transformStore.changes)
+                {
+                    var scene = GetSceneByPathOrName(change.scenePath);
+                    if (!scene.IsValid() || !scene.isLoaded)
+                        continue;
+
+                    var go = FindInSceneByPath(scene, change.objectPath);
+                    if (go == null)
+                        continue;
+
+                    if (!_sceneEntries.TryGetValue(scene, out var list))
+                    {
+                        list = new List<GameObjectEntry>();
+                        _sceneEntries[scene] = list;
+                        _sceneFoldouts[scene] = true;
+                    }
+
+                    var entry = list.Find(e => e.GameObject == go);
+                    if (entry == null)
+                    {
+                        entry = new GameObjectEntry { GameObject = go, Expanded = false };
+                        list.Add(entry);
+                    }
+
+                    if (!entry.ChangedComponents.Contains(go.transform))
+                    {
+                        entry.ChangedComponents.Add(go.transform);
+                    }
+                }
+            }
+
+            var compStore = PlayModeComponentChangesStore.LoadExisting();
+            if (compStore != null)
+            {
+                foreach (var change in compStore.changes)
+                {
+                    var scene = GetSceneByPathOrName(change.scenePath);
+                    if (!scene.IsValid() || !scene.isLoaded)
+                        continue;
+
+                    var go = FindInSceneByPath(scene, change.objectPath);
+                    if (go == null)
+                        continue;
+
+                    var type = System.Type.GetType(change.componentType);
+                    if (type == null)
+                        continue;
+
+                    var allComps = go.GetComponents(type);
+                    if (change.componentIndex < 0 || change.componentIndex >= allComps.Length)
+                        continue;
+
+                    var comp = allComps[change.componentIndex];
+                    if (comp == null)
+                        continue;
+
+                    if (!_sceneEntries.TryGetValue(scene, out var list))
+                    {
+                        list = new List<GameObjectEntry>();
+                        _sceneEntries[scene] = list;
+                        _sceneFoldouts[scene] = true;
+                    }
+
+                    var entry = list.Find(e => e.GameObject == go);
+                    if (entry == null)
+                    {
+                        entry = new GameObjectEntry { GameObject = go, Expanded = false };
+                        list.Add(entry);
+                    }
+
+                    if (!entry.ChangedComponents.Contains(comp))
+                    {
+                        entry.ChangedComponents.Add(comp);
+                    }
+                }
+            }
         }
         else
         {
