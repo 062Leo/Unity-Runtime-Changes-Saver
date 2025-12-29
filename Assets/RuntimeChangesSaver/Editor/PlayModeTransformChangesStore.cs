@@ -40,7 +40,9 @@ public class PlayModeTransformChangesStore : ScriptableObject
         if (guids != null && guids.Length > 0)
         {
             string path = AssetDatabase.GUIDToAssetPath(guids[0]);
-            return AssetDatabase.LoadAssetAtPath<PlayModeTransformChangesStore>(path);
+            var store = AssetDatabase.LoadAssetAtPath<PlayModeTransformChangesStore>(path);
+            Debug.Log($"[TransformDebug][Store.LoadExisting] Found existing store at '{path}', changeCount={store.changes.Count}");
+            return store;
         }
 
         return null;
@@ -55,6 +57,11 @@ public class PlayModeTransformChangesStore : ScriptableObject
             store = CreateInstance<PlayModeTransformChangesStore>();
             AssetDatabase.CreateAsset(store, assetPath);
             AssetDatabase.SaveAssets();
+        }
+        else
+        {
+            string existingPath = AssetDatabase.GetAssetPath(store);
+            Debug.Log($"[TransformDebug][Store.LoadOrCreate] Using existing store at '{existingPath}', changeCount={store.changes.Count}");
         }
         return store;
     }
@@ -78,5 +85,6 @@ public class PlayModeTransformChangesStore : ScriptableObject
     {
         changes.Clear();
         EditorUtility.SetDirty(this);
+        Debug.Log("[TransformDebug][Store.Clear] Cleared all stored transform changes");
     }
 }

@@ -38,6 +38,18 @@ public class PlayModeChangesInspector
         var changedComponents = PlayModeChangesTracker.GetChangedComponents(go);
         bool hasChanges = changedComponents.Count > 0;
 
+        bool hasTransformChange = false;
+        for (int i = 0; i < changedComponents.Count; i++)
+        {
+            if (changedComponents[i] is Transform || changedComponents[i] is RectTransform)
+            {
+                hasTransformChange = true;
+                break;
+            }
+        }
+
+        Debug.Log($"[TransformDebug][Inspector.Header] GO='{go.name}', changedCount={changedComponents.Count}, hasTransform={hasTransformChange}");
+
         EditorGUILayout.BeginHorizontal(EditorStyles.helpBox);
 
         using (new EditorGUI.DisabledScope(!hasChanges))

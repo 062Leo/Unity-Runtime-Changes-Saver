@@ -43,5 +43,7 @@ public class TransformSnapshot
             offsetMin = rt.offsetMin;
             offsetMax = rt.offsetMax;
         }
+
+        Debug.Log($"[TransformDebug][Snapshot.Create] GO='{go.name}', isRect={isRectTransform}, pos={position}, rot={rotation.eulerAngles}, scale={scale}{(isRectTransform ? $", anchoredPos={anchoredPosition}, sizeDelta={sizeDelta}" : string.Empty)}");
     }
 }

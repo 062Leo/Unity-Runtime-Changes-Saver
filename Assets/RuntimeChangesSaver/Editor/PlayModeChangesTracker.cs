@@ -46,7 +46,6 @@ public static class PlayModeChangesTracker
 
     static PlayModeChangesTracker()
     {
-        Debug.Log("=== PlayModeChangesTracker INITIALIZED ===");
         EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
         EditorApplication.update += OnEditorUpdate;
     }
@@ -59,7 +58,6 @@ public static class PlayModeChangesTracker
             bool needsCapture = EditorPrefs.GetBool(PREFS_KEY, false);
             if (needsCapture)
             {
-                Debug.Log("=== DELAYED CAPTURE: First frame of play mode ===");
                 EditorPrefs.DeleteKey(PREFS_KEY);
                 // Wait one frame for scene to be ready
                 EditorApplication.delayCall += CaptureSnapshotsInPlayMode;
@@ -69,39 +67,23 @@ public static class PlayModeChangesTracker
 
     private static void OnPlayModeStateChanged(PlayModeStateChange state)
     {
-        Debug.Log($"=== PlayModeStateChanged: {state} ===");
-
         switch (state)
         {
             case PlayModeStateChange.ExitingEditMode:
-                Debug.Log("=== EXITING EDIT MODE - Capturing NOW ===");
                 CaptureSnapshotsInEditMode();
                 // Also set flag in case ExitingEditMode doesn't capture properly
                 EditorPrefs.SetBool(PREFS_KEY, snapshots.Count == 0);
                 break;
 
             case PlayModeStateChange.EnteredPlayMode:
-                Debug.Log($"=== ENTERED PLAY MODE ===");
-                Debug.Log($"Snapshot count: {snapshots.Count}");
-
                 // If no snapshots, schedule capture for next frame
                 if (snapshots.Count == 0)
                 {
-                    Debug.Log("=== No snapshots found, will capture on next frame ===");
                     EditorPrefs.SetBool(PREFS_KEY, true);
-                }
-                else
-                {
-                    Debug.Log($"Component snapshots: {componentSnapshots.Count}");
-                    if (snapshots.Count > 0)
-                    {
-                        Debug.Log($"First 3 keys: {string.Join(", ", snapshots.Keys.Take(3))}");
-                    }
                 }
                 break;
 
             case PlayModeStateChange.EnteredEditMode:
-                Debug.Log("=== ENTERED EDIT MODE - Applying changes ===");
                 EditorPrefs.DeleteKey(PREFS_KEY);
                 ApplyChangesFromStoreToEditMode();
                 // Clear snapshots when returning to edit mode
@@ -115,49 +97,34 @@ public static class PlayModeChangesTracker
 
     private static void CaptureSnapshotsInPlayMode()
     {
-        Debug.Log(">>> CaptureSnapshotsInPlayMode() - Capturing initial state NOW");
-
         snapshots.Clear();
         selectedProperties.Clear();
         componentSnapshots.Clear();
 
         int sceneCount = SceneManager.sceneCount;
-        Debug.Log($">>> Scene count: {sceneCount}");
-
         int totalObjects = 0;
         for (int i = 0; i < sceneCount; i++)
         {
             Scene scene = SceneManager.GetSceneAt(i);
-            Debug.Log($">>> Scene {i}: name={scene.name}, path={scene.path}, isLoaded={scene.isLoaded}");
-
             if (!scene.isLoaded) continue;
 
             GameObject[] roots = scene.GetRootGameObjects();
-            Debug.Log($">>> Scene {scene.name} has {roots.Length} root GameObjects");
-
             foreach (GameObject rootGO in roots)
             {
                 totalObjects += CaptureGameObjectRecursive(rootGO);
             }
         }
-
-        Debug.Log($">>> DONE: Captured {snapshots.Count} snapshots from {totalObjects} total GameObjects");
     }
 
     private static void CaptureSnapshotsInEditMode()
     {
-        Debug.Log(">>> CaptureSnapshotsInEditMode() called");
-
         snapshots.Clear();
         selectedProperties.Clear();
         componentSnapshots.Clear();
 
         int sceneCount = SceneManager.sceneCount;
-        Debug.Log($">>> Scene count: {sceneCount}");
-
         if (sceneCount == 0)
         {
-            Debug.LogWarning(">>> No scenes loaded!");
             return;
         }
 
@@ -166,32 +133,15 @@ public static class PlayModeChangesTracker
         for (int i = 0; i < sceneCount; i++)
         {
             Scene scene = SceneManager.GetSceneAt(i);
-            Debug.Log($">>> Scene {i}: name={scene.name}, path={scene.path}, isLoaded={scene.isLoaded}");
-
             if (!scene.isLoaded)
             {
-                Debug.Log($">>> Scene {scene.name} not loaded, skipping");
                 continue;
             }
 
             GameObject[] roots = scene.GetRootGameObjects();
-            Debug.Log($">>> Scene {scene.name} has {roots.Length} root GameObjects");
-
             foreach (GameObject rootGO in roots)
             {
-                Debug.Log($">>> Processing root: {rootGO.name}");
                 totalObjects += CaptureGameObjectRecursive(rootGO);
-            }
-        }
-
-        Debug.Log($">>> DONE: Captured {snapshots.Count} snapshots from {totalObjects} total GameObjects");
-
-        if (snapshots.Count > 0)
-        {
-            Debug.Log($">>> Sample keys:");
-            foreach (var key in snapshots.Keys.Take(5))
-            {
-                Debug.Log($">>>   - {key}");
             }
         }
     }
@@ -201,40 +151,29 @@ public static class PlayModeChangesTracker
         int count = 1;
 
         string key = GetGameObjectKey(go);
-        Debug.Log($">>>   Capturing: {go.name} -> Key: {key}");
-
         snapshots[key] = new TransformSnapshot(go);
 
         // Capture all components
         var compDict = new Dictionary<string, ComponentSnapshot>();
         Component[] components = go.GetComponents<Component>();
-
-        Debug.Log($">>>   {go.name} has {components.Length} components");
-
         foreach (var comp in components)
         {
             if (comp == null)
             {
-                Debug.Log($">>>     Null component, skipping");
                 continue;
             }
 
             if (comp is Transform)
             {
-                Debug.Log($">>>     Transform, skipping");
                 continue;
             }
 
             string compKey = GetComponentKey(comp);
-            Debug.Log($">>>     Capturing component: {comp.GetType().Name} -> Key: {compKey}");
-
             ComponentSnapshot compSnapshot = CaptureComponentSnapshot(comp);
             compDict[compKey] = compSnapshot;
-            Debug.Log($">>>     Component snapshot has {compSnapshot.properties.Count} properties");
         }
 
         componentSnapshots[key] = compDict;
-        Debug.Log($">>>   Total components captured for {go.name}: {compDict.Count}");
 
         // Recurse to children
         foreach (Transform child in go.transform)
@@ -330,14 +269,11 @@ public static class PlayModeChangesTracker
         // If no snapshots exist, this GameObject wasn't captured
         if (!componentSnapshots.ContainsKey(key))
         {
-            Debug.Log($"No snapshots found for {go.name} (Key: {key})");
             return new List<Component>();
         }
 
         var changed = new List<Component>();
         var compSnapshots = componentSnapshots[key];
-
-        Debug.Log($"Checking {go.name}: {compSnapshots.Count} component snapshots");
 
         // Check Transform changes separately
         if (snapshots.ContainsKey(key))
@@ -348,12 +284,12 @@ public static class PlayModeChangesTracker
 
             if (transformChanges.Count > 0)
             {
-                Debug.Log($"  - Transform: Changed = True ({transformChanges.Count} properties)");
+                Debug.Log($"[TransformDebug][Tracker.GetChangedComponents] GO='{go.name}', TransformChanged=True, changedProps={string.Join(",", transformChanges)}");
                 changed.Add(go.transform);
             }
             else
             {
-                Debug.Log($"  - Transform: Changed = False");
+                Debug.Log($"[TransformDebug][Tracker.GetChangedComponents] GO='{go.name}', TransformChanged=False");
             }
         }
 
@@ -366,12 +302,10 @@ public static class PlayModeChangesTracker
 
             if (!compSnapshots.ContainsKey(compKey))
             {
-                Debug.Log($"  - {comp.GetType().Name}: No snapshot found (key: {compKey})");
                 continue;
             }
 
             bool hasChanged = HasComponentChanged(comp, compSnapshots[compKey]);
-            Debug.Log($"  - {comp.GetType().Name}: Changed = {hasChanged}");
 
             if (hasChanged)
             {
@@ -379,7 +313,6 @@ public static class PlayModeChangesTracker
             }
         }
 
-        Debug.Log($"Total changed components: {changed.Count}");
         return changed;
     }
 
@@ -516,18 +449,15 @@ public static class PlayModeChangesTracker
     {
         string key = GetGameObjectKey(go);
         markedForPersistence.Add(key);
-        Debug.Log($"Marked {go.name} for persistence");
+        Debug.Log($"[TransformDebug][Tracker.MarkForPersistence] GO='{go.name}', Key='{key}'");
     }
 
     private static void ApplyChangesFromStoreToEditMode()
     {
         if (markedForPersistence.Count == 0)
         {
-            Debug.Log("No objects marked for persistence");
             return;
         }
-
-        Debug.Log($"Applying changes for {markedForPersistence.Count} marked objects");
 
         foreach (string goKey in markedForPersistence)
         {
@@ -544,14 +474,12 @@ public static class PlayModeChangesTracker
 
             if (!scene.IsValid())
             {
-                Debug.LogWarning($"Could not find scene: {scenePath}");
                 continue;
             }
 
             GameObject go = FindInSceneByPath(scene, goPath);
             if (go == null)
             {
-                Debug.LogWarning($"Could not find GameObject: {goPath}");
                 continue;
             }
 
@@ -590,7 +518,7 @@ public static class PlayModeChangesTracker
                     EditorSceneManager.MarkSceneDirty(scene);
                 }
 
-                Debug.Log($"Applied Transform changes to {go.name}");
+                Debug.Log($"[TransformDebug][Tracker.ApplyChanges] Applied Transform changes to GO='{go.name}', scene='{scene.path}'");
             }
 
             // Apply Component changes
@@ -609,14 +537,11 @@ public static class PlayModeChangesTracker
                     // The current values in play mode are what we want to keep
                     Undo.RecordObject(comp, "Apply Play Mode Component Changes");
                     EditorUtility.SetDirty(comp);
-
-                    Debug.Log($"Applied {comp.GetType().Name} changes to {go.name}");
                 }
             }
         }
 
         AssetDatabase.SaveAssets();
-        Debug.Log("All marked changes applied to Edit Mode");
     }
 
     private static void ApplyPropertyToTransform(Transform t, RectTransform rt, PlayModeTransformChangesStore.TransformChange change, string prop)
@@ -694,8 +619,13 @@ public static class PlayModeChangesTracker
 
     public static TransformSnapshot GetSnapshot(GameObject go)
     {
+        if (go == null)
+            return null;
+
         string key = GetGameObjectKey(go);
-        return snapshots.TryGetValue(key, out var snap) ? snap : null;
+        bool found = snapshots.TryGetValue(key, out var snap);
+        Debug.Log($"[TransformDebug][Tracker.GetSnapshot] GO='{go.name}', Key='{key}', Found={found}");
+        return found ? snap : null;
     }
 
     public static void SetSnapshot(GameObject go, TransformSnapshot snapshot)

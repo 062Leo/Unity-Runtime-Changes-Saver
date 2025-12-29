@@ -83,6 +83,9 @@ internal class PlayModeOverridesWindow : PopupWindowContent
 
         if (GUI.Button(labelRect, content, EditorStyles.label))
         {
+            bool isTransform = component is Transform;
+            bool isRectTransform = component is RectTransform;
+            Debug.Log($"[TransformDebug][OverridesWindow.RowClick] GO='{targetGO.name}', Component='{component.GetType().Name}', isTransform={isTransform}, isRectTransform={isRectTransform}");
             PopupWindow.Show(rowRect, new PlayModeOverrideComparePopup(component));
         }
     }
@@ -148,6 +151,8 @@ internal class PlayModeOverridesWindow : PopupWindowContent
                 rt.offsetMin = originalSnapshot.offsetMin;
                 rt.offsetMax = originalSnapshot.offsetMax;
             }
+
+            Debug.Log($"[TransformDebug][OverridesWindow.RevertAll] GO='{targetGO.name}', originalPos={originalSnapshot.position}, originalRot={originalSnapshot.rotation.eulerAngles}, originalScale={originalSnapshot.scale}, isRect={originalSnapshot.isRectTransform}");
         }
 
         // Revert other components
@@ -164,14 +169,14 @@ internal class PlayModeOverridesWindow : PopupWindowContent
             }
         }
 
-        Debug.Log($"Reverted all changes on {targetGO.name}");
+        Debug.Log($"[TransformDebug][OverridesWindow.RevertAll] Completed for GO='{targetGO.name}'");
     }
 
     void ApplyAllChanges()
     {
         // Mark this GameObject's changes to be persisted
         PlayModeChangesTracker.MarkForPersistence(targetGO);
-        Debug.Log($"Marked all changes on {targetGO.name} for persistence - will be applied when exiting play mode");
+        Debug.Log($"[TransformDebug][OverridesWindow.ApplyAll] Marked all changes on GO='{targetGO.name}' for persistence (will be applied when exiting play mode)");
     }
 
     void RevertComponent(Component comp, ComponentSnapshot snapshot)

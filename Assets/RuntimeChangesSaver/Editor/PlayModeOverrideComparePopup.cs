@@ -26,6 +26,7 @@ internal class PlayModeOverrideComparePopup : PopupWindowContent
     void CreateSnapshotAndEditors()
     {
         var go = liveComponent.gameObject;
+        Debug.Log($"[TransformDebug][ComparePopup.Create] LiveComponent='{liveComponent.GetType().Name}', GO='{go.name}'");
         snapshotGO = new GameObject("SnapshotTransform");
         snapshotGO.hideFlags = HideFlags.HideAndDontSave;
 
@@ -36,6 +37,8 @@ internal class PlayModeOverrideComparePopup : PopupWindowContent
 
             if (originalSnapshot != null)
             {
+                Debug.Log($"[TransformDebug][ComparePopup.Create] Original snapshot FOUND for GO='{go.name}'. isRect={originalSnapshot.isRectTransform}, pos={originalSnapshot.position}, rot={originalSnapshot.rotation.eulerAngles}, scale={originalSnapshot.scale}");
+
                 if (originalSnapshot.isRectTransform && liveComponent is RectTransform)
                 {
                     // AddComponent<RectTransform> ersetzt das normale Transform automatisch
@@ -57,6 +60,8 @@ internal class PlayModeOverrideComparePopup : PopupWindowContent
                     snapshotRT.sizeDelta = originalSnapshot.sizeDelta;
                     snapshotRT.offsetMin = originalSnapshot.offsetMin;
                     snapshotRT.offsetMax = originalSnapshot.offsetMax;
+
+                    Debug.Log($"[TransformDebug][ComparePopup.Create] Applied RectTransform data to snapshot GO='{snapshotGO.name}': anchoredPos={snapshotRT.anchoredPosition}, sizeDelta={snapshotRT.sizeDelta}, anchorMin={snapshotRT.anchorMin}, anchorMax={snapshotRT.anchorMax}");
                 }
 
                 // Immer auch die Basis-Transform-Werte setzen
@@ -64,11 +69,26 @@ internal class PlayModeOverrideComparePopup : PopupWindowContent
                 snapshotComponent.transform.localRotation = originalSnapshot.rotation;
                 snapshotComponent.transform.localScale = originalSnapshot.scale;
 
+                var t = snapshotComponent.transform;
+                Debug.Log($"[TransformDebug][ComparePopup.Create] Applied basic Transform data to snapshot GO='{snapshotGO.name}': pos={t.localPosition}, rot={t.localRotation.eulerAngles}, scale={t.localScale}");
+
                 // 3. SerializedObject synchronisieren (DAS FEHLTE)
                 // Wenn du danach Editor.CreateEditor(snapshotComponent) aufrufst, 
                 // sollte es funktionieren. Falls der Editor schon existiert:
                 SerializedObject so = new SerializedObject(snapshotComponent);
                 so.Update(); // Lädt die soeben gesetzten Werte in das SerializedObject
+
+                var posProp = so.FindProperty("m_LocalPosition");
+                var rotProp = so.FindProperty("m_LocalRotation");
+                var scaleProp = so.FindProperty("m_LocalScale");
+                if (posProp != null && scaleProp != null)
+                {
+                    Debug.Log($"[TransformDebug][ComparePopup.Serialized] Serialized snapshot for GO='{snapshotGO.name}': pos={posProp.vector3Value}, scale={scaleProp.vector3Value}");
+                }
+            }
+            else
+            {
+                Debug.Log($"[TransformDebug][ComparePopup.Create] Original snapshot MISSING for GO='{go.name}' (Transform)");
             }
         }
         else
@@ -105,13 +125,17 @@ internal class PlayModeOverrideComparePopup : PopupWindowContent
 
         if (snapshotComponent != null)
         {
-            Debug.Log($"[PlayModeOverrideComparePopup] Creating editors. snapshotComponent type={snapshotComponent.GetType().Name}, liveComponent type={liveComponent.GetType().Name}");
+            var leftTransform = snapshotComponent.transform;
+            var rightTransform = (liveComponent as Component)?.transform;
+
+            Debug.Log($"[TransformDebug][ComparePopup.EditorsCreated] snapshotComponentType={snapshotComponent.GetType().Name}, liveComponentType={liveComponent.GetType().Name}, leftPos={leftTransform.localPosition}, leftRot={leftTransform.localRotation.eulerAngles}, leftScale={leftTransform.localScale}, rightPos={(rightTransform != null ? rightTransform.localPosition.ToString() : "n/a")}, rightRot={(rightTransform != null ? rightTransform.localRotation.eulerAngles.ToString() : "n/a")}, rightScale={(rightTransform != null ? rightTransform.localScale.ToString() : "n/a")}");
+
             leftEditor = Editor.CreateEditor(snapshotComponent);
             rightEditor = Editor.CreateEditor(liveComponent);
         }
         else
         {
-            Debug.LogWarning($"[PlayModeOverrideComparePopup] snapshotComponent is NULL for GO='{go.name}', liveComponent='{liveComponent.GetType().Name}'. Editors will not be created.");
+            Debug.LogWarning($"[TransformDebug][ComparePopup.EditorsCreated] snapshotComponent is NULL for GO='{go.name}', liveComponent='{liveComponent.GetType().Name}'. Editors will not be created.");
         }
     }
 
@@ -187,13 +211,46 @@ internal class PlayModeOverrideComparePopup : PopupWindowContent
         GUI.enabled = editable;
 
         GUILayout.BeginArea(new Rect(4, 0, viewRect.width - 8, viewRect.height));
-        editor.OnInspectorGUI();
+        // Spezialbehandlung für Transform/RectTransform, da der eingebaute TransformInspector
+        // im Popup-Layout keine Werte anzeigt, obwohl sie korrekt im Objekt vorhanden sind.
+        if (editor != null && editor.target is Transform transformTarget)
+        {
+            DrawTransformInspector(transformTarget, editable);
+        }
+        else
+        {
+            editor.OnInspectorGUI();
+        }
         GUILayout.EndArea();
 
         GUI.enabled = true;
 
         GUI.EndScrollView();
         GUI.EndGroup();
+    }
+
+    void DrawTransformInspector(Transform t, bool editable)
+    {
+        if (t == null)
+            return;
+
+        EditorGUI.BeginDisabledGroup(!editable);
+
+        EditorGUI.BeginChangeCheck();
+        Vector3 pos = EditorGUILayout.Vector3Field("Position", t.localPosition);
+        Vector3 rot = EditorGUILayout.Vector3Field("Rotation", t.localEulerAngles);
+        Vector3 scale = EditorGUILayout.Vector3Field("Scale", t.localScale);
+
+        if (EditorGUI.EndChangeCheck() && editable)
+        {
+            Undo.RecordObject(t, "Edit Transform");
+            t.localPosition = pos;
+            t.localEulerAngles = rot;
+            t.localScale = scale;
+            EditorUtility.SetDirty(t);
+        }
+
+        EditorGUI.EndDisabledGroup();
     }
 
     void DrawColumnHeader(Rect rect, UnityEngine.Object target, string title)
@@ -245,7 +302,6 @@ internal class PlayModeOverrideComparePopup : PopupWindowContent
         if (GUILayout.Button("Apply", GUILayout.Width(120f), GUILayout.Height(28f)))
         {
             // Changes are already applied (we're in play mode editing live)
-            Debug.Log($"Applied changes to {liveComponent.GetType().Name}");
             editorWindow.Close();
         }
 
@@ -280,7 +336,7 @@ internal class PlayModeOverrideComparePopup : PopupWindowContent
         }
 
         targetSO.ApplyModifiedProperties();
-        Debug.Log($"Reverted {liveComponent.GetType().Name} to original values");
+        Debug.Log($"[TransformDebug][ComparePopup.Revert] Reverted {liveComponent.GetType().Name} to original values");
     }
 
     public override void OnClose()
