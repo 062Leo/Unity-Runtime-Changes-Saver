@@ -179,28 +179,95 @@ internal class PlayModeOverrideComparePopup : PopupWindowContent
 
             if (Application.isPlaying)
             {
-                // Play Mode: wie bisher über den ComponentSnapshot arbeiten.
-                string compKey = PlayModeChangesTracker.GetComponentKey(liveComponent);
-                var snapshot = PlayModeChangesTracker.GetComponentSnapshot(go, compKey);
+                // Play Mode: zunächst versuchen wir – analog zu Transforms – einen passenden
+                // Eintrag im Component-Store zu finden (für bereits akzeptierte Overrides).
+                PlayModeComponentChangesStore.ComponentChange match = null;
+                var compStore = PlayModeComponentChangesStore.LoadExisting();
 
-                if (snapshot != null)
+                if (compStore != null)
+                {
+                    string scenePath = go.scene.path;
+                    if (string.IsNullOrEmpty(scenePath))
+                        scenePath = go.scene.name;
+
+                    string objectPath = GetGameObjectPathForPopup(go.transform);
+                    string componentType = type.AssemblyQualifiedName;
+                    var allOfType = go.GetComponents(type);
+                    int index = System.Array.IndexOf(allOfType, liveComponent);
+
+                    foreach (var c in compStore.changes)
+                    {
+                        if (c.scenePath == scenePath &&
+                            c.objectPath == objectPath &&
+                            c.componentType == componentType &&
+                            c.componentIndex == index)
+                        {
+                            match = c;
+                            break;
+                        }
+                    }
+                }
+
+                if (match != null)
                 {
                     SerializedObject so = new SerializedObject(snapshotComponent);
 
-                    foreach (var kvp in snapshot.properties)
+                    var baseValues = (match.hasOriginalValues &&
+                                      match.originalSerializedValues != null &&
+                                      match.originalSerializedValues.Count == match.propertyPaths.Count)
+                        ? match.originalSerializedValues
+                        : match.serializedValues;
+
+                    var baseTypes = (match.hasOriginalValues &&
+                                     match.originalValueTypes != null &&
+                                     match.originalValueTypes.Count == match.propertyPaths.Count)
+                        ? match.originalValueTypes
+                        : match.valueTypes;
+
+                    for (int i = 0; i < match.propertyPaths.Count; i++)
                     {
-                        SerializedProperty prop = so.FindProperty(kvp.Key);
-                        if (prop != null)
+                        string path = match.propertyPaths[i];
+                        SerializedProperty prop = so.FindProperty(path);
+                        if (prop == null)
+                            continue;
+
+                        string typeName = (i < baseTypes.Count) ? baseTypes[i] : string.Empty;
+                        string value = (i < baseValues.Count) ? baseValues[i] : string.Empty;
+
+                        try
                         {
-                            try
-                            {
-                                SetPropertyValue(prop, kvp.Value);
-                            }
-                            catch { }
+                            ApplySerializedComponentValueForPopup(prop, typeName, value);
                         }
+                        catch { }
                     }
 
                     so.ApplyModifiedPropertiesWithoutUndo();
+                }
+                else
+                {
+                    // Fallback: wie bisher über den ComponentSnapshot arbeiten.
+                    string compKey = PlayModeChangesTracker.GetComponentKey(liveComponent);
+                    var snapshot = PlayModeChangesTracker.GetComponentSnapshot(go, compKey);
+
+                    if (snapshot != null)
+                    {
+                        SerializedObject so = new SerializedObject(snapshotComponent);
+
+                        foreach (var kvp in snapshot.properties)
+                        {
+                            SerializedProperty prop = so.FindProperty(kvp.Key);
+                            if (prop != null)
+                            {
+                                try
+                                {
+                                    SetPropertyValue(prop, kvp.Value);
+                                }
+                                catch { }
+                            }
+                        }
+
+                        so.ApplyModifiedPropertiesWithoutUndo();
+                    }
                 }
             }
             else
