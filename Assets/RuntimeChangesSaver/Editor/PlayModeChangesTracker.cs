@@ -70,6 +70,14 @@ public static class PlayModeChangesTracker
         switch (state)
         {
             case PlayModeStateChange.ExitingEditMode:
+                // Beim Start in den Play Mode immer den persistenten Store leeren,
+                // damit wir nur Änderungen aus der aktuellen Session übernehmen.
+                var storeOnEnterPlay = PlayModeTransformChangesStore.LoadExisting();
+                if (storeOnEnterPlay != null)
+                {
+                    storeOnEnterPlay.Clear();
+                }
+
                 CaptureSnapshotsInEditMode();
                 // Also set flag in case ExitingEditMode doesn't capture properly
                 EditorPrefs.SetBool(PREFS_KEY, snapshots.Count == 0);
@@ -454,62 +462,57 @@ public static class PlayModeChangesTracker
 
     private static void ApplyChangesFromStoreToEditMode()
     {
-        if (markedForPersistence.Count == 0)
+        // Transform-Änderungen werden über das ScriptableObject
+        // PlayModeTransformChangesStore persistiert. Dies überlebt
+        // Domain Reloads besser als statische Dictionaries.
+
+        var store = PlayModeTransformChangesStore.LoadExisting();
+        if (store != null && store.changes.Count > 0)
         {
-            return;
-        }
-
-        foreach (string goKey in markedForPersistence)
-        {
-            // Parse key to get scene and object path
-            var parts = goKey.Split('|');
-            if (parts.Length != 2) continue;
-
-            string scenePath = parts[0];
-            string goPath = parts[1];
-
-            var scene = EditorSceneManager.GetSceneByPath(scenePath);
-            if (!scene.IsValid())
-                scene = EditorSceneManager.GetSceneByName(scenePath);
-
-            if (!scene.IsValid())
+            foreach (var change in store.changes)
             {
-                continue;
-            }
+                var scene = EditorSceneManager.GetSceneByPath(change.scenePath);
+                if (!scene.IsValid())
+                    scene = EditorSceneManager.GetSceneByName(change.scenePath);
 
-            GameObject go = FindInSceneByPath(scene, goPath);
-            if (go == null)
-            {
-                continue;
-            }
+                if (!scene.IsValid())
+                    continue;
 
-            // Apply Transform changes
-            if (snapshots.ContainsKey(goKey))
-            {
-                TransformSnapshot original = snapshots[goKey];
+                GameObject go = FindInSceneByPath(scene, change.objectPath);
+                if (go == null)
+                    continue;
+
                 Transform t = go.transform;
                 RectTransform rt = t as RectTransform;
 
-                // Get current values (from play mode)
-                TransformSnapshot current = new TransformSnapshot(go);
-
                 Undo.RecordObject(t, "Apply Play Mode Transform Changes");
 
-                // Apply all transform properties
-                t.localPosition = current.position;
-                t.localRotation = current.rotation;
-                t.localScale = current.scale;
-
-                if (rt != null && current.isRectTransform)
+                // Wenn modifiedProperties gesetzt ist, nur diese anwenden,
+                // sonst alle Transform-Werte.
+                if (change.modifiedProperties != null && change.modifiedProperties.Count > 0)
                 {
-                    rt.anchoredPosition = current.anchoredPosition;
-                    rt.anchoredPosition3D = current.anchoredPosition3D;
-                    rt.anchorMin = current.anchorMin;
-                    rt.anchorMax = current.anchorMax;
-                    rt.pivot = current.pivot;
-                    rt.sizeDelta = current.sizeDelta;
-                    rt.offsetMin = current.offsetMin;
-                    rt.offsetMax = current.offsetMax;
+                    foreach (var prop in change.modifiedProperties)
+                    {
+                        ApplyPropertyToTransform(t, rt, change, prop);
+                    }
+                }
+                else
+                {
+                    t.localPosition = change.position;
+                    t.localRotation = change.rotation;
+                    t.localScale = change.scale;
+
+                    if (rt != null && change.isRectTransform)
+                    {
+                        rt.anchoredPosition = change.anchoredPosition;
+                        rt.anchoredPosition3D = change.anchoredPosition3D;
+                        rt.anchorMin = change.anchorMin;
+                        rt.anchorMax = change.anchorMax;
+                        rt.pivot = change.pivot;
+                        rt.sizeDelta = change.sizeDelta;
+                        rt.offsetMin = change.offsetMin;
+                        rt.offsetMax = change.offsetMax;
+                    }
                 }
 
                 EditorUtility.SetDirty(go);
@@ -521,26 +524,89 @@ public static class PlayModeChangesTracker
                 Debug.Log($"[TransformDebug][Tracker.ApplyChanges] Applied Transform changes to GO='{go.name}', scene='{scene.path}'");
             }
 
-            // Apply Component changes
-            if (componentSnapshots.ContainsKey(goKey))
+            // Nach dem Anwenden leeren wir den Store.
+            store.Clear();
+            AssetDatabase.SaveAssets();
+        }
+    }
+
+    // Nimmt die aktuellen Transform-Werte eines GameObjects an (Apply/Apply All im Play Mode):
+    // 1) Baseline-Snapshot wird auf den aktuellen Zustand gesetzt, damit das Objekt aus der
+    //    Changed-Liste verschwindet.
+    // 2) Die aktuellen Werte werden in den ScriptableObject-Store geschrieben, um sie beim
+    //    Verlassen des Play Modes im Edit Mode zu übernehmen.
+    public static void AcceptTransformChanges(GameObject go)
+    {
+        if (go == null)
+            return;
+
+        // Baseline verschieben: aktueller Zustand wird neuer Snapshot.
+        SetSnapshot(go, new TransformSnapshot(go));
+
+        // Persistente Speicherung im ScriptableObject.
+        RecordTransformChangeToStore(go);
+    }
+
+    private static void RecordTransformChangeToStore(GameObject go)
+    {
+        var store = PlayModeTransformChangesStore.LoadOrCreate();
+
+        string scenePath = go.scene.path;
+        string objectPath = GetGameObjectPath(go.transform);
+
+        TransformSnapshot current = new TransformSnapshot(go);
+        TransformSnapshot original = GetSnapshot(go);
+
+        List<string> modifiedProps;
+        if (original != null)
+        {
+            modifiedProps = GetChangedProperties(original, current);
+        }
+        else
+        {
+            // Falls kein Original-Snapshot existiert, alle Eigenschaften als geändert markieren.
+            modifiedProps = new List<string> { "position", "rotation", "scale" };
+            if (current.isRectTransform)
             {
-                var compSnaps = componentSnapshots[goKey];
-
-                foreach (var comp in go.GetComponents<Component>())
+                modifiedProps.AddRange(new[]
                 {
-                    if (comp == null || comp is Transform) continue;
-
-                    string compKey = GetComponentKey(comp);
-                    if (!compSnaps.ContainsKey(compKey)) continue;
-
-                    // Component has snapshot, so it was changed
-                    // The current values in play mode are what we want to keep
-                    Undo.RecordObject(comp, "Apply Play Mode Component Changes");
-                    EditorUtility.SetDirty(comp);
-                }
+                    "anchoredPosition", "anchoredPosition3D", "anchorMin", "anchorMax",
+                    "pivot", "sizeDelta", "offsetMin", "offsetMax"
+                });
             }
         }
 
+        // Existierenden Eintrag für dieses Objekt suchen und überschreiben oder neuen anlegen.
+        var existing = store.changes.FindIndex(c => c.scenePath == scenePath && c.objectPath == objectPath);
+        var change = new PlayModeTransformChangesStore.TransformChange
+        {
+            scenePath = scenePath,
+            objectPath = objectPath,
+            isRectTransform = current.isRectTransform,
+            position = current.position,
+            rotation = current.rotation,
+            scale = current.scale,
+            anchoredPosition = current.anchoredPosition,
+            anchoredPosition3D = current.anchoredPosition3D,
+            anchorMin = current.anchorMin,
+            anchorMax = current.anchorMax,
+            pivot = current.pivot,
+            sizeDelta = current.sizeDelta,
+            offsetMin = current.offsetMin,
+            offsetMax = current.offsetMax,
+            modifiedProperties = modifiedProps
+        };
+
+        if (existing >= 0)
+        {
+            store.changes[existing] = change;
+        }
+        else
+        {
+            store.changes.Add(change);
+        }
+
+        EditorUtility.SetDirty(store);
         AssetDatabase.SaveAssets();
     }
 

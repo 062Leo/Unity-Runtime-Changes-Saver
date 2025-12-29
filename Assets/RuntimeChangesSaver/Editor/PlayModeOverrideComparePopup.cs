@@ -301,7 +301,12 @@ internal class PlayModeOverrideComparePopup : PopupWindowContent
 
         if (GUILayout.Button("Apply", GUILayout.Width(120f), GUILayout.Height(28f)))
         {
-            // Changes are already applied (we're in play mode editing live)
+            // Transform-Änderungen für dieses GameObject annehmen und für
+            // den späteren Übergang in den Edit Mode persistieren.
+            if (liveComponent is Transform || liveComponent is RectTransform)
+            {
+                PlayModeChangesTracker.AcceptTransformChanges(liveComponent.gameObject);
+            }
             editorWindow.Close();
         }
 
