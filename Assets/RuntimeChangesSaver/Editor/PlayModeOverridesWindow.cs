@@ -177,8 +177,22 @@ internal class PlayModeOverridesWindow : PopupWindowContent
     void ApplyAllChanges()
     {
         // Transform-Änderungen für dieses GameObject annehmen und für den
-        // Übergang zurück in den Edit Mode persistieren.
-        PlayModeChangesTracker.AcceptTransformChanges(targetGO);
+        // Übergang zurück in den Edit Mode persistieren – aber nur, wenn der
+        // Transform tatsächlich als geändert erkannt wurde.
+        bool hasTransformChange = false;
+        foreach (var comp in changedComponents)
+        {
+            if (comp is Transform || comp is RectTransform)
+            {
+                hasTransformChange = true;
+                break;
+            }
+        }
+
+        if (hasTransformChange)
+        {
+            PlayModeChangesTracker.AcceptTransformChanges(targetGO);
+        }
 
         // Nicht-Transform-Komponenten ebenfalls annehmen
         foreach (var comp in changedComponents)
