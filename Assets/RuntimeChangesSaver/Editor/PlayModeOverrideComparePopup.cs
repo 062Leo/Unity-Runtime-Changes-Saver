@@ -541,6 +541,8 @@ internal class PlayModeOverrideComparePopup : PopupWindowContent
             {
                 PlayModeChangesTracker.AcceptComponentChanges(liveComponent);
             }
+
+            RefreshBrowserIfOpen();
             editorWindow.Close();
         }
 
@@ -591,6 +593,71 @@ internal class PlayModeOverrideComparePopup : PopupWindowContent
 
         targetSO.ApplyModifiedProperties();
         Debug.Log($"[TransformDebug][ComparePopup.Revert] Reverted {liveComponent.GetType().Name} to original values");
+
+        // Wenn wir im Edit Mode aus dem Browser heraus reverts durchführen,
+        // sollen die entsprechenden Einträge aus den ScriptableObject-Stores
+        // entfernt werden, damit sie im Browser nicht mehr auftauchen.
+        if (!Application.isPlaying && liveComponent != null)
+        {
+            var go = liveComponent.gameObject;
+            string scenePath = go.scene.path;
+            if (string.IsNullOrEmpty(scenePath))
+                scenePath = go.scene.name;
+
+            string objectPath = GetGameObjectPathForPopup(go.transform);
+
+            if (liveComponent is Transform || liveComponent is RectTransform)
+            {
+                var tStore = PlayModeTransformChangesStore.LoadExisting();
+                if (tStore != null)
+                {
+                    int index = tStore.changes.FindIndex(c => c.scenePath == scenePath && c.objectPath == objectPath);
+                    if (index >= 0)
+                    {
+                        tStore.changes.RemoveAt(index);
+                        EditorUtility.SetDirty(tStore);
+                        AssetDatabase.SaveAssets();
+                        Debug.Log($"[TransformDebug][ComparePopup.Revert] Removed Transform entry from store for GO='{go.name}'");
+                    }
+                }
+            }
+            else
+            {
+                var cStore = PlayModeComponentChangesStore.LoadExisting();
+                if (cStore != null)
+                {
+                    var type = liveComponent.GetType();
+                    string componentType = type.AssemblyQualifiedName;
+                    var allOfType = go.GetComponents(type);
+                    int compIndex = System.Array.IndexOf(allOfType, liveComponent);
+
+                    int index = cStore.changes.FindIndex(c =>
+                        c.scenePath == scenePath &&
+                        c.objectPath == objectPath &&
+                        c.componentType == componentType &&
+                        c.componentIndex == compIndex);
+
+                    if (index >= 0)
+                    {
+                        cStore.changes.RemoveAt(index);
+                        EditorUtility.SetDirty(cStore);
+                        AssetDatabase.SaveAssets();
+                        Debug.Log($"[TransformDebug][ComparePopup.Revert] Removed Component entry from store for GO='{go.name}', comp='{liveComponent.GetType().Name}'");
+                    }
+                }
+            }
+        }
+
+        // Nach einem erfolgreichen Revert den Browser aktualisieren, falls er geöffnet ist.
+        RefreshBrowserIfOpen();
+    }
+
+    private static void RefreshBrowserIfOpen()
+    {
+        if (EditorWindow.HasOpenInstances<PlayModeOverridesBrowserWindow>())
+        {
+            PlayModeOverridesBrowserWindow.Open();
+        }
     }
 
     public override void OnClose()

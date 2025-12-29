@@ -16,7 +16,7 @@ MonoBehaviour:
   - scenePath: Assets/Scenes/TestScene.unity
     objectPath: Cube
     isRectTransform: 0
-    position: {x: -13.97, y: 0, z: 12.03}
+    position: {x: 6.94, y: 0, z: -5.78}
     rotation: {x: 0, y: 0, z: 0, w: 1}
     scale: {x: 1, y: 1, z: 1}
     anchoredPosition: {x: 0, y: 0}
@@ -30,7 +30,7 @@ MonoBehaviour:
     modifiedProperties:
     - position
     hasOriginalValues: 1
-    originalPosition: {x: -13.97, y: 0, z: -13.53}
+    originalPosition: {x: -3.14, y: 0, z: 11.28}
     originalRotation: {x: 0, y: 0, z: 0, w: 1}
     originalScale: {x: 1, y: 1, z: 1}
     originalAnchoredPosition: {x: 0, y: 0}
