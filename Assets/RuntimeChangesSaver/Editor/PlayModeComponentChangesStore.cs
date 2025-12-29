@@ -18,6 +18,11 @@ public class PlayModeComponentChangesStore : ScriptableObject
         public List<string> propertyPaths = new List<string>();
         public List<string> serializedValues = new List<string>();
         public List<string> valueTypes = new List<string>();
+
+        // Flag und Daten für die ursprünglichen (Baseline-)Werte der Komponente
+        public bool hasOriginalValues;
+        public List<string> originalSerializedValues = new List<string>();
+        public List<string> originalValueTypes = new List<string>();
     }
 
     public List<ComponentChange> changes = new List<ComponentChange>();

@@ -179,28 +179,99 @@ internal class PlayModeOverrideComparePopup : PopupWindowContent
             var type = liveComponent.GetType();
             snapshotComponent = snapshotGO.AddComponent(type);
 
-            // Restore values from snapshot
-            string compKey = PlayModeChangesTracker.GetComponentKey(liveComponent);
-            var snapshot = PlayModeChangesTracker.GetComponentSnapshot(go, compKey);
-
-            if (snapshot != null)
+            if (Application.isPlaying)
             {
-                SerializedObject so = new SerializedObject(snapshotComponent);
+                // Play Mode: wie bisher über den ComponentSnapshot arbeiten.
+                string compKey = PlayModeChangesTracker.GetComponentKey(liveComponent);
+                var snapshot = PlayModeChangesTracker.GetComponentSnapshot(go, compKey);
 
-                foreach (var kvp in snapshot.properties)
+                if (snapshot != null)
                 {
-                    SerializedProperty prop = so.FindProperty(kvp.Key);
-                    if (prop != null)
+                    SerializedObject so = new SerializedObject(snapshotComponent);
+
+                    foreach (var kvp in snapshot.properties)
                     {
-                        try
+                        SerializedProperty prop = so.FindProperty(kvp.Key);
+                        if (prop != null)
                         {
-                            SetPropertyValue(prop, kvp.Value);
+                            try
+                            {
+                                SetPropertyValue(prop, kvp.Value);
+                            }
+                            catch { }
                         }
-                        catch { }
+                    }
+
+                    so.ApplyModifiedPropertiesWithoutUndo();
+                }
+            }
+            else
+            {
+                // Edit Mode (z.B. Browser): Originalwerte aus dem Component-Store holen.
+                var compStore = PlayModeComponentChangesStore.LoadExisting();
+                PlayModeComponentChangesStore.ComponentChange match = null;
+
+                if (compStore != null)
+                {
+                    string scenePath = go.scene.path;
+                    if (string.IsNullOrEmpty(scenePath))
+                        scenePath = go.scene.name;
+
+                    string objectPath = GetGameObjectPathForPopup(go.transform);
+                    string componentType = type.AssemblyQualifiedName;
+                    var allOfType = go.GetComponents(type);
+                    int index = System.Array.IndexOf(allOfType, liveComponent);
+
+                    foreach (var c in compStore.changes)
+                    {
+                        if (c.scenePath == scenePath &&
+                            c.objectPath == objectPath &&
+                            c.componentType == componentType &&
+                            c.componentIndex == index)
+                        {
+                            match = c;
+                            break;
+                        }
                     }
                 }
 
-                so.ApplyModifiedPropertiesWithoutUndo();
+                if (match != null)
+                {
+                    SerializedObject so = new SerializedObject(snapshotComponent);
+
+                    // Wenn Originalwerte vorhanden und passend dimensioniert sind, diese verwenden,
+                    // andernfalls auf die aktuell persistierten Werte zurückfallen.
+                    var baseValues = (match.hasOriginalValues &&
+                                      match.originalSerializedValues != null &&
+                                      match.originalSerializedValues.Count == match.propertyPaths.Count)
+                        ? match.originalSerializedValues
+                        : match.serializedValues;
+
+                    var baseTypes = (match.hasOriginalValues &&
+                                     match.originalValueTypes != null &&
+                                     match.originalValueTypes.Count == match.propertyPaths.Count)
+                        ? match.originalValueTypes
+                        : match.valueTypes;
+
+                    for (int i = 0; i < match.propertyPaths.Count; i++)
+                    {
+                        string path = match.propertyPaths[i];
+                        SerializedProperty prop = so.FindProperty(path);
+                        if (prop == null)
+                            continue;
+
+                        string typeName = (i < baseTypes.Count) ? baseTypes[i] : string.Empty;
+                        string value = (i < baseValues.Count) ? baseValues[i] : string.Empty;
+
+                        try
+                        {
+                            ApplySerializedComponentValueForPopup(prop, typeName, value);
+                        }
+                        catch { }
+                    }
+
+                    so.ApplyModifiedPropertiesWithoutUndo();
+                }
             }
         }
 
@@ -237,6 +308,84 @@ internal class PlayModeOverrideComparePopup : PopupWindowContent
             case SerializedPropertyType.Quaternion: prop.quaternionValue = (Quaternion)value; break;
             case SerializedPropertyType.Enum: prop.enumValueIndex = (int)value; break;
         }
+    }
+
+    private void ApplySerializedComponentValueForPopup(SerializedProperty prop, string typeName, string value)
+    {
+        switch (typeName)
+        {
+            case "Integer":
+                if (int.TryParse(value, out var iVal)) prop.intValue = iVal;
+                break;
+            case "Boolean":
+                if (bool.TryParse(value, out var bVal)) prop.boolValue = bVal;
+                break;
+            case "Float":
+                if (float.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var fVal)) prop.floatValue = fVal;
+                break;
+            case "String":
+                prop.stringValue = value;
+                break;
+            case "Color":
+                Color col; if (ColorUtility.TryParseHtmlString(value, out col)) prop.colorValue = col;
+                break;
+            case "Vector2":
+                prop.vector2Value = DeserializeVector2ForPopup(value);
+                break;
+            case "Vector3":
+                prop.vector3Value = DeserializeVector3ForPopup(value);
+                break;
+            case "Vector4":
+                prop.vector4Value = DeserializeVector4ForPopup(value);
+                break;
+            case "Quaternion":
+                prop.quaternionValue = DeserializeQuaternionForPopup(value);
+                break;
+            case "Enum":
+                if (int.TryParse(value, out var eVal)) prop.enumValueIndex = eVal;
+                break;
+        }
+    }
+
+    private Vector2 DeserializeVector2ForPopup(string s)
+    {
+        var parts = s.Split(',');
+        if (parts.Length != 2) return Vector2.zero;
+        float.TryParse(parts[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var x);
+        float.TryParse(parts[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var y);
+        return new Vector2(x, y);
+    }
+
+    private Vector3 DeserializeVector3ForPopup(string s)
+    {
+        var parts = s.Split(',');
+        if (parts.Length != 3) return Vector3.zero;
+        float.TryParse(parts[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var x);
+        float.TryParse(parts[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var y);
+        float.TryParse(parts[2], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var z);
+        return new Vector3(x, y, z);
+    }
+
+    private Vector4 DeserializeVector4ForPopup(string s)
+    {
+        var parts = s.Split(',');
+        if (parts.Length != 4) return Vector4.zero;
+        float.TryParse(parts[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var x);
+        float.TryParse(parts[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var y);
+        float.TryParse(parts[2], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var z);
+        float.TryParse(parts[3], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var w);
+        return new Vector4(x, y, z, w);
+    }
+
+    private Quaternion DeserializeQuaternionForPopup(string s)
+    {
+        var parts = s.Split(',');
+        if (parts.Length != 4) return Quaternion.identity;
+        float.TryParse(parts[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var x);
+        float.TryParse(parts[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var y);
+        float.TryParse(parts[2], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var z);
+        float.TryParse(parts[3], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var w);
+        return new Quaternion(x, y, z, w);
     }
 
     public override Vector2 GetWindowSize()

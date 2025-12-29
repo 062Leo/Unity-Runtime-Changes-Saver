@@ -458,20 +458,31 @@ public static class PlayModeChangesTracker
         string goKey = GetGameObjectKey(go);
         string compKey = GetComponentKey(comp);
 
-        // Baseline für diese Komponente auf aktuellen Zustand verschieben
+        // Ursprünglichen Snapshot sichern, bevor wir die Baseline verschieben.
+        ComponentSnapshot originalSnapshot = null;
+
         if (!componentSnapshots.TryGetValue(goKey, out var dict))
         {
             dict = new Dictionary<string, ComponentSnapshot>();
             componentSnapshots[goKey] = dict;
         }
+        else
+        {
+            if (dict.TryGetValue(compKey, out var existingSnapshot))
+            {
+                originalSnapshot = existingSnapshot;
+            }
+        }
 
-        dict[compKey] = CaptureComponentSnapshot(comp);
+        // Baseline für diese Komponente auf aktuellen Zustand verschieben
+        ComponentSnapshot currentSnapshot = CaptureComponentSnapshot(comp);
+        dict[compKey] = currentSnapshot;
 
-        // Änderungen im ScriptableObject speichern
-        RecordComponentChangeToStore(comp, goKey, compKey);
+        // Änderungen im ScriptableObject speichern (inkl. Originalwerte, falls verfügbar).
+        RecordComponentChangeToStore(comp, goKey, compKey, originalSnapshot);
     }
 
-    private static void RecordComponentChangeToStore(Component comp, string goKey, string compKey)
+    private static void RecordComponentChangeToStore(Component comp, string goKey, string compKey, ComponentSnapshot originalSnapshot)
     {
         var store = PlayModeComponentChangesStore.LoadOrCreate();
 
@@ -501,8 +512,45 @@ public static class PlayModeChangesTracker
             values.Add(serializedValue);
         }
 
-        // Bestehenden Eintrag für diese Komponente ersetzen oder neuen hinzufügen
+        // Bestehenden Eintrag für diese Komponente suchen
         int existing = store.changes.FindIndex(c => c.scenePath == scenePath && c.objectPath == objectPath && c.componentType == comp.GetType().AssemblyQualifiedName && c.componentIndex == index);
+
+        // Originalwerte bestimmen:
+        // - Wenn bereits ein Eintrag mit Originalwerten existiert, diesen beibehalten.
+        // - Andernfalls aus dem übergebenen Snapshot ableiten (falls vorhanden).
+        bool hasOriginal = false;
+        List<string> originalValues = new List<string>();
+        List<string> originalTypes = new List<string>();
+
+        if (existing >= 0 && store.changes[existing].hasOriginalValues)
+        {
+            var existingChange = store.changes[existing];
+            hasOriginal = true;
+            if (existingChange.originalSerializedValues != null)
+                originalValues.AddRange(existingChange.originalSerializedValues);
+            if (existingChange.originalValueTypes != null)
+                originalTypes.AddRange(existingChange.originalValueTypes);
+        }
+        else if (originalSnapshot != null)
+        {
+            hasOriginal = true;
+
+            foreach (var path in propertyPaths)
+            {
+                if (originalSnapshot.properties != null && originalSnapshot.properties.TryGetValue(path, out var originalValue) && originalValue != null)
+                {
+                    SerializeSnapshotValue(originalValue, out string typeName, out string serializedValue);
+                    originalTypes.Add(typeName);
+                    originalValues.Add(serializedValue);
+                }
+                else
+                {
+                    originalTypes.Add(string.Empty);
+                    originalValues.Add(string.Empty);
+                }
+            }
+        }
+
         var change = new PlayModeComponentChangesStore.ComponentChange
         {
             scenePath = scenePath,
@@ -511,7 +559,10 @@ public static class PlayModeChangesTracker
             componentIndex = index,
             propertyPaths = propertyPaths,
             serializedValues = values,
-            valueTypes = typeNames
+            valueTypes = typeNames,
+            hasOriginalValues = hasOriginal,
+            originalSerializedValues = originalValues,
+            originalValueTypes = originalTypes
         };
 
         if (existing >= 0)
@@ -576,6 +627,64 @@ public static class PlayModeChangesTracker
                 break;
             default:
                 // Nicht unterstützte Typen ignorieren wir
+                typeName = string.Empty;
+                serializedValue = string.Empty;
+                break;
+        }
+    }
+
+    private static void SerializeSnapshotValue(object value, out string typeName, out string serializedValue)
+    {
+        typeName = string.Empty;
+        serializedValue = string.Empty;
+
+        if (value == null)
+            return;
+
+        switch (value)
+        {
+            case int i:
+                typeName = "Integer";
+                serializedValue = i.ToString();
+                break;
+            case bool b:
+                typeName = "Boolean";
+                serializedValue = b.ToString();
+                break;
+            case float f:
+                typeName = "Float";
+                serializedValue = f.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                break;
+            case string s:
+                typeName = "String";
+                serializedValue = s ?? string.Empty;
+                break;
+            case Color c:
+                typeName = "Color";
+                serializedValue = "#" + ColorUtility.ToHtmlStringRGBA(c);
+                break;
+            case Vector2 v2:
+                typeName = "Vector2";
+                serializedValue = SerializeVector2(v2);
+                break;
+            case Vector3 v3:
+                typeName = "Vector3";
+                serializedValue = SerializeVector3(v3);
+                break;
+            case Vector4 v4:
+                typeName = "Vector4";
+                serializedValue = SerializeVector4(v4);
+                break;
+            case Quaternion q:
+                typeName = "Quaternion";
+                serializedValue = SerializeQuaternion(q);
+                break;
+            case Enum e:
+                typeName = "Enum";
+                serializedValue = Convert.ToInt32(e).ToString();
+                break;
+            default:
+                // Nicht unterstützte Typen bleiben leer
                 typeName = string.Empty;
                 serializedValue = string.Empty;
                 break;
