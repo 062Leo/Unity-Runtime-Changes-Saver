@@ -4,8 +4,6 @@ using UnityEditor;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
-
-
 [Serializable]
 public class ComponentSnapshot
 {

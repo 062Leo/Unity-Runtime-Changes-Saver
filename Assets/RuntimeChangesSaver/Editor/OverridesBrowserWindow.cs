@@ -3,8 +3,7 @@ using UnityEditor;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
-
-public class PlayModeOverridesBrowserWindow : EditorWindow
+public class OverridesBrowserWindow : EditorWindow
 {
     private class GameObjectEntry
     {
@@ -20,7 +19,7 @@ public class PlayModeOverridesBrowserWindow : EditorWindow
     [MenuItem("Tools/Play Mode Overrides Browser")]
     public static void Open()
     {
-        var window = GetWindow<PlayModeOverridesBrowserWindow>("Play Mode Overrides");
+        var window = GetWindow<OverridesBrowserWindow>("Play Mode Overrides");
         window.RefreshData();
         window.Show();
     }

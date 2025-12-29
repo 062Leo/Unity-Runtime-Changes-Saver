@@ -2,13 +2,10 @@
 using UnityEditor;
 using UnityEngine;
 
-
-
-
 [InitializeOnLoad]
-public class PlayModeChangesInspector
+public class ChangesInspector
 {
-    static PlayModeChangesInspector()
+    static ChangesInspector()
     {
         Editor.finishedDefaultHeaderGUI += OnPostHeaderGUI;
     }

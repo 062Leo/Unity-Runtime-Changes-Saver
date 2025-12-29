@@ -1,8 +1,7 @@
-
 using UnityEditor;
 using UnityEngine;
 
-internal class PlayModeOverrideComparePopup : PopupWindowContent
+internal class OverrideComparePopup : PopupWindowContent
 {
     private readonly Component liveComponent;
     private GameObject snapshotGO;
@@ -20,7 +19,7 @@ internal class PlayModeOverrideComparePopup : PopupWindowContent
     private Vector2 dragStartMouse;
     private Rect dragStartWindow;
 
-    public PlayModeOverrideComparePopup(Component component)
+    public OverrideComparePopup(Component component)
     {
         liveComponent = component;
         CreateSnapshotAndEditors();

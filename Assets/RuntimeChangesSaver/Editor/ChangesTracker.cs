@@ -6,11 +6,8 @@ using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
-
-
-
 [InitializeOnLoad]
-public static class PlayModeChangesTracker
+public static class ChangesTracker
 {
     // Use SerializeField to survive domain reload
     [System.Serializable]
@@ -44,7 +41,7 @@ public static class PlayModeChangesTracker
 
     private const string PREFS_KEY = "PlayModeChangesTracker_CaptureNeeded";
 
-    static PlayModeChangesTracker()
+    static ChangesTracker()
     {
         EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
         EditorApplication.update += OnEditorUpdate;

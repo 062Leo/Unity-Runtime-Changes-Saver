@@ -2,9 +2,7 @@ using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
 
-
-
-internal class PlayModeOverridesWindow : PopupWindowContent
+internal class OverridesWindow : PopupWindowContent
 {
     private readonly GameObject targetGO;
     private readonly List<Component> changedComponents;
@@ -13,7 +11,7 @@ internal class PlayModeOverridesWindow : PopupWindowContent
     private const float HeaderHeight = 28f;
     private const float FooterHeight = 50f;
 
-    public PlayModeOverridesWindow(GameObject go)
+    public OverridesWindow(GameObject go)
     {
         targetGO = go;
         changedComponents = PlayModeChangesTracker.GetChangedComponents(go);

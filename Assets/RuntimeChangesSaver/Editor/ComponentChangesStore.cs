@@ -4,8 +4,7 @@ using System.IO;
 using UnityEditor;
 using UnityEngine;
 
-
-public class PlayModeComponentChangesStore : ScriptableObject
+public class ComponentChangesStore : ScriptableObject
 {
     [Serializable]
     public class ComponentChange
@@ -27,25 +26,25 @@ public class PlayModeComponentChangesStore : ScriptableObject
 
     public List<ComponentChange> changes = new List<ComponentChange>();
 
-    public static PlayModeComponentChangesStore LoadExisting()
+    public static ComponentChangesStore LoadExisting()
     {
         string[] guids = AssetDatabase.FindAssets("t:PlayModeComponentChangesStore");
         if (guids != null && guids.Length > 0)
         {
             string path = AssetDatabase.GUIDToAssetPath(guids[0]);
-            return AssetDatabase.LoadAssetAtPath<PlayModeComponentChangesStore>(path);
+            return AssetDatabase.LoadAssetAtPath<ComponentChangesStore>(path);
         }
 
         return null;
     }
 
-    public static PlayModeComponentChangesStore LoadOrCreate()
+    public static ComponentChangesStore LoadOrCreate()
     {
         var store = LoadExisting();
         if (store == null)
         {
             string assetPath = GetDefaultAssetPath();
-            store = CreateInstance<PlayModeComponentChangesStore>();
+            store = CreateInstance<ComponentChangesStore>();
             AssetDatabase.CreateAsset(store, assetPath);
             AssetDatabase.SaveAssets();
         }
