@@ -32,63 +32,144 @@ internal class PlayModeOverrideComparePopup : PopupWindowContent
 
         if (liveComponent is Transform)
         {
-            // 1. Vorbereitung der richtigen Komponente (RectTransform vs Transform)
-            var originalSnapshot = PlayModeChangesTracker.GetSnapshot(go);
+            // Transform-Vergleich: Im Play Mode basieren wir auf den Snapshots im
+            // PlayModeChangesTracker. Im Edit Mode (z.B. wenn der Browser geöffnet ist)
+            // verwenden wir die im ScriptableObject gespeicherten Originalwerte.
 
-            if (originalSnapshot != null)
+            if (Application.isPlaying)
             {
-                Debug.Log($"[TransformDebug][ComparePopup.Create] Original snapshot FOUND for GO='{go.name}'. isRect={originalSnapshot.isRectTransform}, pos={originalSnapshot.position}, rot={originalSnapshot.rotation.eulerAngles}, scale={originalSnapshot.scale}");
+                // Play Mode: wie bisher über die gespeicherten Snapshots arbeiten.
+                var originalSnapshot = PlayModeChangesTracker.GetSnapshot(go);
 
-                if (originalSnapshot.isRectTransform && liveComponent is RectTransform)
+                if (originalSnapshot != null)
                 {
-                    // AddComponent<RectTransform> ersetzt das normale Transform automatisch
-                    snapshotComponent = snapshotGO.AddComponent<RectTransform>();
+                    Debug.Log($"[TransformDebug][ComparePopup.Create] Original snapshot FOUND for GO='{go.name}'. isRect={originalSnapshot.isRectTransform}, pos={originalSnapshot.position}, rot={originalSnapshot.rotation.eulerAngles}, scale={originalSnapshot.scale}");
+
+                    if (originalSnapshot.isRectTransform && liveComponent is RectTransform)
+                    {
+                        // AddComponent<RectTransform> ersetzt das normale Transform automatisch
+                        snapshotComponent = snapshotGO.AddComponent<RectTransform>();
+                    }
+                    else
+                    {
+                        snapshotComponent = snapshotGO.transform;
+                    }
+
+                    // Werte vom Snapshot auf das Objekt übertragen
+                    if (snapshotComponent is RectTransform snapshotRT)
+                    {
+                        snapshotRT.anchoredPosition = originalSnapshot.anchoredPosition;
+                        snapshotRT.anchoredPosition3D = originalSnapshot.anchoredPosition3D;
+                        snapshotRT.anchorMin = originalSnapshot.anchorMin;
+                        snapshotRT.anchorMax = originalSnapshot.anchorMax;
+                        snapshotRT.pivot = originalSnapshot.pivot;
+                        snapshotRT.sizeDelta = originalSnapshot.sizeDelta;
+                        snapshotRT.offsetMin = originalSnapshot.offsetMin;
+                        snapshotRT.offsetMax = originalSnapshot.offsetMax;
+
+                        Debug.Log($"[TransformDebug][ComparePopup.Create] Applied RectTransform data to snapshot GO='{snapshotGO.name}': anchoredPos={snapshotRT.anchoredPosition}, sizeDelta={snapshotRT.sizeDelta}, anchorMin={snapshotRT.anchorMin}, anchorMax={snapshotRT.anchorMax}");
+                    }
+
+                    snapshotComponent.transform.localPosition = originalSnapshot.position;
+                    snapshotComponent.transform.localRotation = originalSnapshot.rotation;
+                    snapshotComponent.transform.localScale = originalSnapshot.scale;
+
+                    var t = snapshotComponent.transform;
+                    Debug.Log($"[TransformDebug][ComparePopup.Create] Applied basic Transform data to snapshot GO='{snapshotGO.name}': pos={t.localPosition}, rot={t.localRotation.eulerAngles}, scale={t.localScale}");
+
+                    SerializedObject so = new SerializedObject(snapshotComponent);
+                    so.Update();
+
+                    var posProp = so.FindProperty("m_LocalPosition");
+                    var rotProp = so.FindProperty("m_LocalRotation");
+                    var scaleProp = so.FindProperty("m_LocalScale");
+                    if (posProp != null && scaleProp != null)
+                    {
+                        Debug.Log($"[TransformDebug][ComparePopup.Serialized] Serialized snapshot for GO='{snapshotGO.name}': pos={posProp.vector3Value}, scale={scaleProp.vector3Value}");
+                    }
                 }
                 else
                 {
-                    snapshotComponent = snapshotGO.transform;
-                }
-
-                // 2. Werte vom Snapshot auf das Objekt übertragen
-                if (snapshotComponent is RectTransform snapshotRT)
-                {
-                    snapshotRT.anchoredPosition = originalSnapshot.anchoredPosition;
-                    snapshotRT.anchoredPosition3D = originalSnapshot.anchoredPosition3D;
-                    snapshotRT.anchorMin = originalSnapshot.anchorMin;
-                    snapshotRT.anchorMax = originalSnapshot.anchorMax;
-                    snapshotRT.pivot = originalSnapshot.pivot;
-                    snapshotRT.sizeDelta = originalSnapshot.sizeDelta;
-                    snapshotRT.offsetMin = originalSnapshot.offsetMin;
-                    snapshotRT.offsetMax = originalSnapshot.offsetMax;
-
-                    Debug.Log($"[TransformDebug][ComparePopup.Create] Applied RectTransform data to snapshot GO='{snapshotGO.name}': anchoredPos={snapshotRT.anchoredPosition}, sizeDelta={snapshotRT.sizeDelta}, anchorMin={snapshotRT.anchorMin}, anchorMax={snapshotRT.anchorMax}");
-                }
-
-                // Immer auch die Basis-Transform-Werte setzen
-                snapshotComponent.transform.localPosition = originalSnapshot.position;
-                snapshotComponent.transform.localRotation = originalSnapshot.rotation;
-                snapshotComponent.transform.localScale = originalSnapshot.scale;
-
-                var t = snapshotComponent.transform;
-                Debug.Log($"[TransformDebug][ComparePopup.Create] Applied basic Transform data to snapshot GO='{snapshotGO.name}': pos={t.localPosition}, rot={t.localRotation.eulerAngles}, scale={t.localScale}");
-
-                // 3. SerializedObject synchronisieren (DAS FEHLTE)
-                // Wenn du danach Editor.CreateEditor(snapshotComponent) aufrufst, 
-                // sollte es funktionieren. Falls der Editor schon existiert:
-                SerializedObject so = new SerializedObject(snapshotComponent);
-                so.Update(); // Lädt die soeben gesetzten Werte in das SerializedObject
-
-                var posProp = so.FindProperty("m_LocalPosition");
-                var rotProp = so.FindProperty("m_LocalRotation");
-                var scaleProp = so.FindProperty("m_LocalScale");
-                if (posProp != null && scaleProp != null)
-                {
-                    Debug.Log($"[TransformDebug][ComparePopup.Serialized] Serialized snapshot for GO='{snapshotGO.name}': pos={posProp.vector3Value}, scale={scaleProp.vector3Value}");
+                    Debug.Log($"[TransformDebug][ComparePopup.Create] Original snapshot MISSING for GO='{go.name}' (Transform, Play Mode)");
                 }
             }
             else
             {
-                Debug.Log($"[TransformDebug][ComparePopup.Create] Original snapshot MISSING for GO='{go.name}' (Transform)");
+                // Edit Mode (z.B. Browser): Originalwerte aus dem persistenten Store holen.
+                var store = PlayModeTransformChangesStore.LoadExisting();
+                PlayModeTransformChangesStore.TransformChange match = null;
+
+                if (store != null)
+                {
+                    string scenePath = go.scene.path;
+                    if (string.IsNullOrEmpty(scenePath))
+                        scenePath = go.scene.name;
+
+                    string objectPath = GetGameObjectPathForPopup(go.transform);
+
+                    foreach (var c in store.changes)
+                    {
+                        if (c.scenePath == scenePath && c.objectPath == objectPath)
+                        {
+                            match = c;
+                            break;
+                        }
+                    }
+                }
+
+                if (match != null)
+                {
+                    var change = match;
+
+                    bool useOriginal = change.hasOriginalValues;
+
+                    Vector3 basePos = useOriginal ? change.originalPosition : change.position;
+                    Quaternion baseRot = useOriginal ? change.originalRotation : change.rotation;
+                    Vector3 baseScale = useOriginal ? change.originalScale : change.scale;
+
+                    Vector2 baseAnchoredPos = useOriginal ? change.originalAnchoredPosition : change.anchoredPosition;
+                    Vector3 baseAnchoredPos3D = useOriginal ? change.originalAnchoredPosition3D : change.anchoredPosition3D;
+                    Vector2 baseAnchorMin = useOriginal ? change.originalAnchorMin : change.anchorMin;
+                    Vector2 baseAnchorMax = useOriginal ? change.originalAnchorMax : change.anchorMax;
+                    Vector2 basePivot = useOriginal ? change.originalPivot : change.pivot;
+                    Vector2 baseSizeDelta = useOriginal ? change.originalSizeDelta : change.sizeDelta;
+                    Vector2 baseOffsetMin = useOriginal ? change.originalOffsetMin : change.offsetMin;
+                    Vector2 baseOffsetMax = useOriginal ? change.originalOffsetMax : change.offsetMax;
+
+                    if (change.isRectTransform && liveComponent is RectTransform)
+                    {
+                        snapshotComponent = snapshotGO.AddComponent<RectTransform>();
+                    }
+                    else
+                    {
+                        snapshotComponent = snapshotGO.transform;
+                    }
+
+                    if (snapshotComponent is RectTransform snapshotRT)
+                    {
+                        snapshotRT.anchoredPosition = baseAnchoredPos;
+                        snapshotRT.anchoredPosition3D = baseAnchoredPos3D;
+                        snapshotRT.anchorMin = baseAnchorMin;
+                        snapshotRT.anchorMax = baseAnchorMax;
+                        snapshotRT.pivot = basePivot;
+                        snapshotRT.sizeDelta = baseSizeDelta;
+                        snapshotRT.offsetMin = baseOffsetMin;
+                        snapshotRT.offsetMax = baseOffsetMax;
+                    }
+
+                    snapshotComponent.transform.localPosition = basePos;
+                    snapshotComponent.transform.localRotation = baseRot;
+                    snapshotComponent.transform.localScale = baseScale;
+
+                    SerializedObject so = new SerializedObject(snapshotComponent);
+                    so.Update();
+
+                    Debug.Log($"[TransformDebug][ComparePopup.Create] EditMode baseline from store for GO='{go.name}', useOriginal={useOriginal}, pos={basePos}, rot={baseRot.eulerAngles}, scale={baseScale}");
+                }
+                else
+                {
+                    Debug.Log($"[TransformDebug][ComparePopup.Create] No TransformChange in store for GO='{go.name}' (Edit Mode)");
+                }
             }
         }
         else
@@ -319,6 +400,21 @@ internal class PlayModeOverrideComparePopup : PopupWindowContent
 
         GUILayout.Space(6);
         GUILayout.EndArea();
+    }
+
+    private static string GetGameObjectPathForPopup(Transform transform)
+    {
+        if (transform == null)
+            return string.Empty;
+
+        var path = transform.name;
+        while (transform.parent != null)
+        {
+            transform = transform.parent;
+            path = transform.name + "/" + path;
+        }
+
+        return path;
     }
 
     void RevertChanges()

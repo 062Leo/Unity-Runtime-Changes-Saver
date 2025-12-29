@@ -794,27 +794,30 @@ public static class PlayModeChangesTracker
     //    Changed-Liste verschwindet.
     // 2) Die aktuellen Werte werden in den ScriptableObject-Store geschrieben, um sie beim
     //    Verlassen des Play Modes im Edit Mode zu übernehmen.
+    // 3) Zusätzlich werden die ursprünglichen Werte (vor dem ersten Accept) mitgespeichert,
+    //    damit der Browser im Edit Mode diese als "Original" anzeigen kann.
     public static void AcceptTransformChanges(GameObject go)
     {
         if (go == null)
             return;
 
-        // Baseline verschieben: aktueller Zustand wird neuer Snapshot.
-        SetSnapshot(go, new TransformSnapshot(go));
+        // Ursprünglichen Snapshot sichern, bevor wir die Baseline verschieben.
+        TransformSnapshot original = GetSnapshot(go);
+        TransformSnapshot current = new TransformSnapshot(go);
 
-        // Persistente Speicherung im ScriptableObject.
-        RecordTransformChangeToStore(go);
+        // Baseline verschieben: aktueller Zustand wird neuer Snapshot.
+        SetSnapshot(go, current);
+
+        // Persistente Speicherung im ScriptableObject (inkl. Originalwerte).
+        RecordTransformChangeToStore(go, original, current);
     }
 
-    private static void RecordTransformChangeToStore(GameObject go)
+    private static void RecordTransformChangeToStore(GameObject go, TransformSnapshot original, TransformSnapshot current)
     {
         var store = PlayModeTransformChangesStore.LoadOrCreate();
 
         string scenePath = go.scene.path;
         string objectPath = GetGameObjectPath(go.transform);
-
-        TransformSnapshot current = new TransformSnapshot(go);
-        TransformSnapshot original = GetSnapshot(go);
 
         List<string> modifiedProps;
         if (original != null)
@@ -835,8 +838,61 @@ public static class PlayModeChangesTracker
             }
         }
 
-        // Existierenden Eintrag für dieses Objekt suchen und überschreiben oder neuen anlegen.
-        var existing = store.changes.FindIndex(c => c.scenePath == scenePath && c.objectPath == objectPath);
+        // Existierenden Eintrag für dieses Objekt suchen.
+        var existingIndex = store.changes.FindIndex(c => c.scenePath == scenePath && c.objectPath == objectPath);
+
+        // Originalwerte bestimmen:
+        // - Wenn bereits ein Eintrag mit Originalwerten existiert, diesen beibehalten.
+        // - Andernfalls Original aus dem übergebenen Snapshot ableiten (falls vorhanden).
+        bool hasOriginal = false;
+        Vector3 originalPosition = Vector3.zero;
+        Quaternion originalRotation = Quaternion.identity;
+        Vector3 originalScale = Vector3.one;
+        Vector2 originalAnchoredPosition = Vector2.zero;
+        Vector3 originalAnchoredPosition3D = Vector3.zero;
+        Vector2 originalAnchorMin = Vector2.zero;
+        Vector2 originalAnchorMax = Vector2.one;
+        Vector2 originalPivot = new Vector2(0.5f, 0.5f);
+        Vector2 originalSizeDelta = Vector2.zero;
+        Vector2 originalOffsetMin = Vector2.zero;
+        Vector2 originalOffsetMax = Vector2.zero;
+
+        if (existingIndex >= 0 && store.changes[existingIndex].hasOriginalValues)
+        {
+            var existing = store.changes[existingIndex];
+            hasOriginal = true;
+            originalPosition = existing.originalPosition;
+            originalRotation = existing.originalRotation;
+            originalScale = existing.originalScale;
+            originalAnchoredPosition = existing.originalAnchoredPosition;
+            originalAnchoredPosition3D = existing.originalAnchoredPosition3D;
+            originalAnchorMin = existing.originalAnchorMin;
+            originalAnchorMax = existing.originalAnchorMax;
+            originalPivot = existing.originalPivot;
+            originalSizeDelta = existing.originalSizeDelta;
+            originalOffsetMin = existing.originalOffsetMin;
+            originalOffsetMax = existing.originalOffsetMax;
+        }
+        else if (original != null)
+        {
+            hasOriginal = true;
+            originalPosition = original.position;
+            originalRotation = original.rotation;
+            originalScale = original.scale;
+
+            if (original.isRectTransform)
+            {
+                originalAnchoredPosition = original.anchoredPosition;
+                originalAnchoredPosition3D = original.anchoredPosition3D;
+                originalAnchorMin = original.anchorMin;
+                originalAnchorMax = original.anchorMax;
+                originalPivot = original.pivot;
+                originalSizeDelta = original.sizeDelta;
+                originalOffsetMin = original.offsetMin;
+                originalOffsetMax = original.offsetMax;
+            }
+        }
+
         var change = new PlayModeTransformChangesStore.TransformChange
         {
             scenePath = scenePath,
@@ -853,12 +909,24 @@ public static class PlayModeChangesTracker
             sizeDelta = current.sizeDelta,
             offsetMin = current.offsetMin,
             offsetMax = current.offsetMax,
-            modifiedProperties = modifiedProps
+            modifiedProperties = modifiedProps,
+            hasOriginalValues = hasOriginal,
+            originalPosition = originalPosition,
+            originalRotation = originalRotation,
+            originalScale = originalScale,
+            originalAnchoredPosition = originalAnchoredPosition,
+            originalAnchoredPosition3D = originalAnchoredPosition3D,
+            originalAnchorMin = originalAnchorMin,
+            originalAnchorMax = originalAnchorMax,
+            originalPivot = originalPivot,
+            originalSizeDelta = originalSizeDelta,
+            originalOffsetMin = originalOffsetMin,
+            originalOffsetMax = originalOffsetMax
         };
 
-        if (existing >= 0)
+        if (existingIndex >= 0)
         {
-            store.changes[existing] = change;
+            store.changes[existingIndex] = change;
         }
         else
         {

@@ -16,7 +16,7 @@ MonoBehaviour:
   - scenePath: Assets/Scenes/TestScene.unity
     objectPath: Cube
     isRectTransform: 0
-    position: {x: -13.97, y: 0, z: -13.53}
+    position: {x: 3.89, y: 0, z: -13.53}
     rotation: {x: 0, y: 0, z: 0, w: 1}
     scale: {x: 1, y: 1, z: 1}
     anchoredPosition: {x: 0, y: 0}
@@ -27,4 +27,17 @@ MonoBehaviour:
     sizeDelta: {x: 0, y: 0}
     offsetMin: {x: 0, y: 0}
     offsetMax: {x: 0, y: 0}
-    modifiedProperties: []
+    modifiedProperties:
+    - position
+    hasOriginalValues: 1
+    originalPosition: {x: -13.97, y: 0, z: -13.53}
+    originalRotation: {x: 0, y: 0, z: 0, w: 1}
+    originalScale: {x: 1, y: 1, z: 1}
+    originalAnchoredPosition: {x: 0, y: 0}
+    originalAnchoredPosition3D: {x: 0, y: 0, z: 0}
+    originalAnchorMin: {x: 0, y: 0}
+    originalAnchorMax: {x: 1, y: 1}
+    originalPivot: {x: 0.5, y: 0.5}
+    originalSizeDelta: {x: 0, y: 0}
+    originalOffsetMin: {x: 0, y: 0}
+    originalOffsetMax: {x: 0, y: 0}
