@@ -5,64 +5,46 @@ using UnityEditor;
 using UnityEngine;
 
 
-
-
-public class PlayModeTransformChangesStore : ScriptableObject
+public class PlayModeComponentChangesStore : ScriptableObject
 {
     [Serializable]
-    public class TransformChange
+    public class ComponentChange
     {
         public string scenePath;
         public string objectPath;
-        public bool isRectTransform;
+        public string componentType;
+        public int componentIndex;
 
-        public Vector3 position;
-        public Quaternion rotation;
-        public Vector3 scale;
-
-        public Vector2 anchoredPosition;
-        public Vector3 anchoredPosition3D;
-        public Vector2 anchorMin;
-        public Vector2 anchorMax;
-        public Vector2 pivot;
-        public Vector2 sizeDelta;
-        public Vector2 offsetMin;
-        public Vector2 offsetMax;
-
-        public List<string> modifiedProperties = new List<string>();
+        public List<string> propertyPaths = new List<string>();
+        public List<string> serializedValues = new List<string>();
+        public List<string> valueTypes = new List<string>();
     }
 
-    public List<TransformChange> changes = new List<TransformChange>();
+    public List<ComponentChange> changes = new List<ComponentChange>();
 
-    public static PlayModeTransformChangesStore LoadExisting()
+    public static PlayModeComponentChangesStore LoadExisting()
     {
-        string[] guids = AssetDatabase.FindAssets("t:PlayModeTransformChangesStore");
+        string[] guids = AssetDatabase.FindAssets("t:PlayModeComponentChangesStore");
         if (guids != null && guids.Length > 0)
         {
             string path = AssetDatabase.GUIDToAssetPath(guids[0]);
-            var store = AssetDatabase.LoadAssetAtPath<PlayModeTransformChangesStore>(path);
-            Debug.Log($"[TransformDebug][Store.LoadExisting] Found existing store at '{path}', changeCount={store.changes.Count}");
-            return store;
+            return AssetDatabase.LoadAssetAtPath<PlayModeComponentChangesStore>(path);
         }
 
         return null;
     }
 
-    public static PlayModeTransformChangesStore LoadOrCreate()
+    public static PlayModeComponentChangesStore LoadOrCreate()
     {
         var store = LoadExisting();
         if (store == null)
         {
             string assetPath = GetDefaultAssetPath();
-            store = CreateInstance<PlayModeTransformChangesStore>();
+            store = CreateInstance<PlayModeComponentChangesStore>();
             AssetDatabase.CreateAsset(store, assetPath);
             AssetDatabase.SaveAssets();
         }
-        else
-        {
-            string existingPath = AssetDatabase.GetAssetPath(store);
-            Debug.Log($"[TransformDebug][Store.LoadOrCreate] Using existing store at '{existingPath}', changeCount={store.changes.Count}");
-        }
+
         return store;
     }
 
@@ -71,7 +53,7 @@ public class PlayModeTransformChangesStore : ScriptableObject
         // Versuche, den Speicherort dieses Skripts zu finden und von dort
         // zum Ordner "RuntimeChangesSaver" hochzulaufen, egal wo er unterhalb
         // von Assets einsortiert ist.
-        string[] scriptGuids = AssetDatabase.FindAssets("PlayModeTransformChangesStore t:Script");
+        string[] scriptGuids = AssetDatabase.FindAssets("PlayModeComponentChangesStore t:Script");
         if (scriptGuids != null && scriptGuids.Length > 0)
         {
             string scriptPath = AssetDatabase.GUIDToAssetPath(scriptGuids[0]);
@@ -118,7 +100,7 @@ public class PlayModeTransformChangesStore : ScriptableObject
             AssetDatabase.CreateFolder(runtimeFolder, "Scriptable_Objects");
         }
 
-        string assetPath = Path.Combine(soFolder, "PlayModeTransformChangesStore.asset");
+        string assetPath = Path.Combine(soFolder, "PlayModeComponentChangesStore.asset");
         return assetPath.Replace("\\", "/");
     }
 
@@ -126,6 +108,5 @@ public class PlayModeTransformChangesStore : ScriptableObject
     {
         changes.Clear();
         EditorUtility.SetDirty(this);
-        Debug.Log("[TransformDebug][Store.Clear] Cleared all stored transform changes");
     }
 }

@@ -307,6 +307,10 @@ internal class PlayModeOverrideComparePopup : PopupWindowContent
             {
                 PlayModeChangesTracker.AcceptTransformChanges(liveComponent.gameObject);
             }
+            else
+            {
+                PlayModeChangesTracker.AcceptComponentChanges(liveComponent);
+            }
             editorWindow.Close();
         }
 

@@ -72,10 +72,16 @@ public static class PlayModeChangesTracker
             case PlayModeStateChange.ExitingEditMode:
                 // Beim Start in den Play Mode immer den persistenten Store leeren,
                 // damit wir nur Änderungen aus der aktuellen Session übernehmen.
-                var storeOnEnterPlay = PlayModeTransformChangesStore.LoadExisting();
-                if (storeOnEnterPlay != null)
+                var transformStoreOnEnterPlay = PlayModeTransformChangesStore.LoadExisting();
+                if (transformStoreOnEnterPlay != null)
                 {
-                    storeOnEnterPlay.Clear();
+                    transformStoreOnEnterPlay.Clear();
+                }
+
+                var componentStoreOnEnterPlay = PlayModeComponentChangesStore.LoadExisting();
+                if (componentStoreOnEnterPlay != null)
+                {
+                    componentStoreOnEnterPlay.Clear();
                 }
 
                 CaptureSnapshotsInEditMode();
@@ -94,11 +100,6 @@ public static class PlayModeChangesTracker
             case PlayModeStateChange.EnteredEditMode:
                 EditorPrefs.DeleteKey(PREFS_KEY);
                 ApplyChangesFromStoreToEditMode();
-                // Clear snapshots when returning to edit mode
-                snapshots.Clear();
-                componentSnapshots.Clear();
-                selectedProperties.Clear();
-                markedForPersistence.Clear();
                 break;
         }
     }
@@ -448,6 +449,185 @@ public static class PlayModeChangesTracker
         AssetDatabase.SaveAssets();
     }
 
+    public static void AcceptComponentChanges(Component comp)
+    {
+        if (comp == null)
+            return;
+
+        GameObject go = comp.gameObject;
+        string goKey = GetGameObjectKey(go);
+        string compKey = GetComponentKey(comp);
+
+        // Baseline für diese Komponente auf aktuellen Zustand verschieben
+        if (!componentSnapshots.TryGetValue(goKey, out var dict))
+        {
+            dict = new Dictionary<string, ComponentSnapshot>();
+            componentSnapshots[goKey] = dict;
+        }
+
+        dict[compKey] = CaptureComponentSnapshot(comp);
+
+        // Änderungen im ScriptableObject speichern
+        RecordComponentChangeToStore(comp, goKey, compKey);
+    }
+
+    private static void RecordComponentChangeToStore(Component comp, string goKey, string compKey)
+    {
+        var store = PlayModeComponentChangesStore.LoadOrCreate();
+
+        string scenePath = comp.gameObject.scene.path;
+        string objectPath = GetGameObjectPath(comp.transform);
+        var allOfType = comp.gameObject.GetComponents(comp.GetType());
+        int index = System.Array.IndexOf(allOfType, comp);
+
+        // Erzeuge einen Schnappschuss des aktuellen Zustands
+        SerializedObject so = new SerializedObject(comp);
+        SerializedProperty prop = so.GetIterator();
+
+        var propertyPaths = new List<string>();
+        var values = new List<string>();
+        var typeNames = new List<string>();
+
+        bool enterChildren = true;
+        while (prop.NextVisible(enterChildren))
+        {
+            enterChildren = false;
+            if (prop.name == "m_Script")
+                continue;
+
+            propertyPaths.Add(prop.propertyPath);
+            SerializeComponentProperty(prop, out string typeName, out string serializedValue);
+            typeNames.Add(typeName);
+            values.Add(serializedValue);
+        }
+
+        // Bestehenden Eintrag für diese Komponente ersetzen oder neuen hinzufügen
+        int existing = store.changes.FindIndex(c => c.scenePath == scenePath && c.objectPath == objectPath && c.componentType == comp.GetType().AssemblyQualifiedName && c.componentIndex == index);
+        var change = new PlayModeComponentChangesStore.ComponentChange
+        {
+            scenePath = scenePath,
+            objectPath = objectPath,
+            componentType = comp.GetType().AssemblyQualifiedName,
+            componentIndex = index,
+            propertyPaths = propertyPaths,
+            serializedValues = values,
+            valueTypes = typeNames
+        };
+
+        if (existing >= 0)
+        {
+            store.changes[existing] = change;
+        }
+        else
+        {
+            store.changes.Add(change);
+        }
+
+        EditorUtility.SetDirty(store);
+        AssetDatabase.SaveAssets();
+    }
+
+    private static void SerializeComponentProperty(SerializedProperty prop, out string typeName, out string serializedValue)
+    {
+        typeName = "";
+        serializedValue = "";
+
+        switch (prop.propertyType)
+        {
+            case SerializedPropertyType.Integer:
+                typeName = "Integer";
+                serializedValue = prop.intValue.ToString();
+                break;
+            case SerializedPropertyType.Boolean:
+                typeName = "Boolean";
+                serializedValue = prop.boolValue.ToString();
+                break;
+            case SerializedPropertyType.Float:
+                typeName = "Float";
+                serializedValue = prop.floatValue.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                break;
+            case SerializedPropertyType.String:
+                typeName = "String";
+                serializedValue = prop.stringValue ?? string.Empty;
+                break;
+            case SerializedPropertyType.Color:
+                typeName = "Color";
+                serializedValue = "#" + ColorUtility.ToHtmlStringRGBA(prop.colorValue);
+                break;
+            case SerializedPropertyType.Vector2:
+                typeName = "Vector2";
+                serializedValue = SerializeVector2(prop.vector2Value);
+                break;
+            case SerializedPropertyType.Vector3:
+                typeName = "Vector3";
+                serializedValue = SerializeVector3(prop.vector3Value);
+                break;
+            case SerializedPropertyType.Vector4:
+                typeName = "Vector4";
+                serializedValue = SerializeVector4(prop.vector4Value);
+                break;
+            case SerializedPropertyType.Quaternion:
+                typeName = "Quaternion";
+                serializedValue = SerializeQuaternion(prop.quaternionValue);
+                break;
+            case SerializedPropertyType.Enum:
+                typeName = "Enum";
+                serializedValue = prop.enumValueIndex.ToString();
+                break;
+            default:
+                // Nicht unterstützte Typen ignorieren wir
+                typeName = string.Empty;
+                serializedValue = string.Empty;
+                break;
+        }
+    }
+
+    private static string SerializeVector2(Vector2 v) => $"{v.x.ToString(System.Globalization.CultureInfo.InvariantCulture)},{v.y.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+    private static string SerializeVector3(Vector3 v) => $"{v.x.ToString(System.Globalization.CultureInfo.InvariantCulture)},{v.y.ToString(System.Globalization.CultureInfo.InvariantCulture)},{v.z.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+    private static string SerializeVector4(Vector4 v) => $"{v.x.ToString(System.Globalization.CultureInfo.InvariantCulture)},{v.y.ToString(System.Globalization.CultureInfo.InvariantCulture)},{v.z.ToString(System.Globalization.CultureInfo.InvariantCulture)},{v.w.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+    private static string SerializeQuaternion(Quaternion q) => $"{q.x.ToString(System.Globalization.CultureInfo.InvariantCulture)},{q.y.ToString(System.Globalization.CultureInfo.InvariantCulture)},{q.z.ToString(System.Globalization.CultureInfo.InvariantCulture)},{q.w.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+
+    private static Vector2 DeserializeVector2(string s)
+    {
+        var parts = s.Split(',');
+        if (parts.Length != 2) return Vector2.zero;
+        float.TryParse(parts[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var x);
+        float.TryParse(parts[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var y);
+        return new Vector2(x, y);
+    }
+
+    private static Vector3 DeserializeVector3(string s)
+    {
+        var parts = s.Split(',');
+        if (parts.Length != 3) return Vector3.zero;
+        float.TryParse(parts[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var x);
+        float.TryParse(parts[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var y);
+        float.TryParse(parts[2], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var z);
+        return new Vector3(x, y, z);
+    }
+
+    private static Vector4 DeserializeVector4(string s)
+    {
+        var parts = s.Split(',');
+        if (parts.Length != 4) return Vector4.zero;
+        float.TryParse(parts[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var x);
+        float.TryParse(parts[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var y);
+        float.TryParse(parts[2], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var z);
+        float.TryParse(parts[3], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var w);
+        return new Vector4(x, y, z, w);
+    }
+
+    private static Quaternion DeserializeQuaternion(string s)
+    {
+        var parts = s.Split(',');
+        if (parts.Length != 4) return Quaternion.identity;
+        float.TryParse(parts[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var x);
+        float.TryParse(parts[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var y);
+        float.TryParse(parts[2], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var z);
+        float.TryParse(parts[3], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var w);
+        return new Quaternion(x, y, z, w);
+    }
+
     public static void PersistSelectedChangesForAll()
     {
         RecordSelectedChangesToStore();
@@ -523,10 +703,89 @@ public static class PlayModeChangesTracker
 
                 Debug.Log($"[TransformDebug][Tracker.ApplyChanges] Applied Transform changes to GO='{go.name}', scene='{scene.path}'");
             }
+        }
 
-            // Nach dem Anwenden leeren wir den Store.
-            store.Clear();
-            AssetDatabase.SaveAssets();
+        // Nicht-Transform-Komponenten über einen separaten Store anwenden
+        var compStore = PlayModeComponentChangesStore.LoadExisting();
+        if (compStore != null && compStore.changes.Count > 0)
+        {
+            foreach (var change in compStore.changes)
+            {
+                var scene = EditorSceneManager.GetSceneByPath(change.scenePath);
+                if (!scene.IsValid())
+                    scene = EditorSceneManager.GetSceneByName(change.scenePath);
+
+                if (!scene.IsValid())
+                    continue;
+
+                GameObject go = FindInSceneByPath(scene, change.objectPath);
+                if (go == null)
+                    continue;
+
+                var type = System.Type.GetType(change.componentType);
+                if (type == null)
+                    continue;
+
+                var allComps = go.GetComponents(type);
+                if (change.componentIndex < 0 || change.componentIndex >= allComps.Length)
+                    continue;
+
+                var comp = allComps[change.componentIndex];
+                if (comp == null)
+                    continue;
+
+                SerializedObject so = new SerializedObject(comp);
+                Undo.RecordObject(comp, "Apply Play Mode Component Changes");
+
+                for (int i = 0; i < change.propertyPaths.Count; i++)
+                {
+                    string path = change.propertyPaths[i];
+                    string value = change.serializedValues[i];
+                    string typeName = change.valueTypes[i];
+
+                    SerializedProperty prop = so.FindProperty(path);
+                    if (prop == null)
+                        continue;
+
+                    ApplySerializedComponentValue(prop, typeName, value);
+                }
+
+                so.ApplyModifiedProperties();
+                EditorUtility.SetDirty(comp);
+                if (scene.IsValid())
+                {
+                    EditorSceneManager.MarkSceneDirty(scene);
+                }
+            }
+        }
+
+        AssetDatabase.SaveAssets();
+    }
+
+    private static void ApplySerializedComponentValue(SerializedProperty prop, string typeName, string value)
+    {
+        switch (typeName)
+        {
+            case "Integer":
+                if (int.TryParse(value, out var iVal)) prop.intValue = iVal; break;
+            case "Boolean":
+                if (bool.TryParse(value, out var bVal)) prop.boolValue = bVal; break;
+            case "Float":
+                if (float.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var fVal)) prop.floatValue = fVal; break;
+            case "String":
+                prop.stringValue = value; break;
+            case "Color":
+                Color col; if (ColorUtility.TryParseHtmlString(value, out col)) prop.colorValue = col; break;
+            case "Vector2":
+                prop.vector2Value = DeserializeVector2(value); break;
+            case "Vector3":
+                prop.vector3Value = DeserializeVector3(value); break;
+            case "Vector4":
+                prop.vector4Value = DeserializeVector4(value); break;
+            case "Quaternion":
+                prop.quaternionValue = DeserializeQuaternion(value); break;
+            case "Enum":
+                if (int.TryParse(value, out var eVal)) prop.enumValueIndex = eVal; break;
         }
     }
 
