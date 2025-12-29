@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -1193,24 +1193,29 @@ internal class PlayModeOverrideComparePopup : PopupWindowContent
     void CreateSnapshotAndEditors()
     {
         var go = liveComponent.gameObject;
+        snapshotGO = new GameObject("SnapshotTransform");
+        snapshotGO.hideFlags = HideFlags.HideAndDontSave;
 
         if (liveComponent is Transform)
         {
-            // Special handling for Transform
-            snapshotGO = new GameObject("SnapshotTransform");
-            snapshotGO.hideFlags = HideFlags.HideAndDontSave;
-
+            // 1. Vorbereitung der richtigen Komponente (RectTransform vs Transform)
             var originalSnapshot = PlayModeChangesTracker.GetSnapshot(go);
+
             if (originalSnapshot != null)
             {
-                var snapshotTransform = snapshotGO.transform;
-                snapshotTransform.localPosition = originalSnapshot.position;
-                snapshotTransform.localRotation = originalSnapshot.rotation;
-                snapshotTransform.localScale = originalSnapshot.scale;
-
-                if (originalSnapshot.isRectTransform && liveComponent is RectTransform liveRT)
+                if (originalSnapshot.isRectTransform && liveComponent is RectTransform)
                 {
-                    var snapshotRT = snapshotGO.AddComponent<RectTransform>();
+                    // AddComponent<RectTransform> ersetzt das normale Transform automatisch
+                    snapshotComponent = snapshotGO.AddComponent<RectTransform>();
+                }
+                else
+                {
+                    snapshotComponent = snapshotGO.transform;
+                }
+
+                // 2. Werte vom Snapshot auf das Objekt übertragen
+                if (snapshotComponent is RectTransform snapshotRT)
+                {
                     snapshotRT.anchoredPosition = originalSnapshot.anchoredPosition;
                     snapshotRT.anchoredPosition3D = originalSnapshot.anchoredPosition3D;
                     snapshotRT.anchorMin = originalSnapshot.anchorMin;
@@ -1219,20 +1224,23 @@ internal class PlayModeOverrideComparePopup : PopupWindowContent
                     snapshotRT.sizeDelta = originalSnapshot.sizeDelta;
                     snapshotRT.offsetMin = originalSnapshot.offsetMin;
                     snapshotRT.offsetMax = originalSnapshot.offsetMax;
+                }
 
-                    snapshotComponent = snapshotRT;
-                }
-                else
-                {
-                    snapshotComponent = snapshotTransform;
-                }
+                // Immer auch die Basis-Transform-Werte setzen
+                snapshotComponent.transform.localPosition = originalSnapshot.position;
+                snapshotComponent.transform.localRotation = originalSnapshot.rotation;
+                snapshotComponent.transform.localScale = originalSnapshot.scale;
+
+                // 3. SerializedObject synchronisieren (DAS FEHLTE)
+                // Wenn du danach Editor.CreateEditor(snapshotComponent) aufrufst, 
+                // sollte es funktionieren. Falls der Editor schon existiert:
+                SerializedObject so = new SerializedObject(snapshotComponent);
+                so.Update(); // Lädt die soeben gesetzten Werte in das SerializedObject
             }
         }
         else
         {
             // For other components, create snapshot from stored data
-            snapshotGO = new GameObject("SnapshotComponent");
-            snapshotGO.hideFlags = HideFlags.HideAndDontSave;
 
             var type = liveComponent.GetType();
             snapshotComponent = snapshotGO.AddComponent(type);
@@ -1264,8 +1272,13 @@ internal class PlayModeOverrideComparePopup : PopupWindowContent
 
         if (snapshotComponent != null)
         {
+            Debug.Log($"[PlayModeOverrideComparePopup] Creating editors. snapshotComponent type={snapshotComponent.GetType().Name}, liveComponent type={liveComponent.GetType().Name}");
             leftEditor = Editor.CreateEditor(snapshotComponent);
             rightEditor = Editor.CreateEditor(liveComponent);
+        }
+        else
+        {
+            Debug.LogWarning($"[PlayModeOverrideComparePopup] snapshotComponent is NULL for GO='{go.name}', liveComponent='{liveComponent.GetType().Name}'. Editors will not be created.");
         }
     }
 
