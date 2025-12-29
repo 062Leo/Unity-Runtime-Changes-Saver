@@ -590,12 +590,25 @@ internal class PlayModeOverrideComparePopup : PopupWindowContent
         }
 
         targetSO.ApplyModifiedProperties();
+
+        // Im Play Mode zusätzlich die Baseline im PlayModeChangesTracker
+        // für dieses Objekt/diese Komponente aktualisieren, damit
+        // GetChangedComponents sie nicht weiter als "geändert" meldet.
+        if (Application.isPlaying && liveComponent != null)
+        {
+            if (liveComponent is Transform || liveComponent is RectTransform)
+            {
+                PlayModeChangesTracker.ResetTransformBaseline(liveComponent.gameObject);
+            }
+            else
+            {
+                PlayModeChangesTracker.ResetComponentBaseline(liveComponent);
+            }
+        }
+
         Debug.Log($"[TransformDebug][ComparePopup.Revert] Reverted {liveComponent.GetType().Name} to original values");
 
-        // Wenn wir im Edit Mode aus dem Browser heraus reverts durchführen,
-        // sollen die entsprechenden Einträge aus den ScriptableObject-Stores
-        // entfernt werden, damit sie im Browser nicht mehr auftauchen.
-        if (!Application.isPlaying && liveComponent != null)
+        if (liveComponent != null)
         {
             var go = liveComponent.gameObject;
             string scenePath = go.scene.path;

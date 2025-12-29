@@ -262,6 +262,35 @@ public static class PlayModeChangesTracker
         return $"{scenePath}|{goPath}";
     }
 
+    // Wird verwendet, um nach einem Revert im Compare-Popup im Play Mode
+    // die Baseline für den Transform eines bestimmten GameObjects neu zu setzen,
+    // damit GetChangedComponents dieses Transform nicht mehr als "geändert" meldet.
+    public static void ResetTransformBaseline(GameObject go)
+    {
+        if (go == null) return;
+        string key = GetGameObjectKey(go);
+        snapshots[key] = new TransformSnapshot(go);
+    }
+
+    // Wird verwendet, um nach einem Revert im Compare-Popup im Play Mode
+    // die Baseline nur für eine spezifische Nicht-Transform-Komponente neu zu setzen.
+    public static void ResetComponentBaseline(Component comp)
+    {
+        if (comp == null) return;
+
+        GameObject go = comp.gameObject;
+        string goKey = GetGameObjectKey(go);
+
+        if (!componentSnapshots.TryGetValue(goKey, out var dict))
+        {
+            dict = new Dictionary<string, ComponentSnapshot>();
+            componentSnapshots[goKey] = dict;
+        }
+
+        string compKey = GetComponentKey(comp);
+        dict[compKey] = CaptureComponentSnapshot(comp);
+    }
+
     public static string GetComponentKey(Component comp)
     {
         var allComps = comp.gameObject.GetComponents(comp.GetType());

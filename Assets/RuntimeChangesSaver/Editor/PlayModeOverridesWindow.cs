@@ -115,12 +115,14 @@ internal class PlayModeOverridesWindow : PopupWindowContent
         if (GUI.Button(revertRect, "Revert All"))
         {
             RevertAllChanges();
+            RefreshBrowserIfOpen();
             editorWindow.Close();
         }
 
         if (GUI.Button(applyRect, "Apply All"))
         {
             ApplyAllChanges();
+            RefreshBrowserIfOpen();
             editorWindow.Close();
         }
     }
@@ -225,6 +227,14 @@ internal class PlayModeOverridesWindow : PopupWindowContent
             case SerializedPropertyType.Vector4: prop.vector4Value = (Vector4)value; break;
             case SerializedPropertyType.Quaternion: prop.quaternionValue = (Quaternion)value; break;
             case SerializedPropertyType.Enum: prop.enumValueIndex = (int)value; break;
+        }
+    }
+
+    private static void RefreshBrowserIfOpen()
+    {
+        if (EditorWindow.HasOpenInstances<PlayModeOverridesBrowserWindow>())
+        {
+            PlayModeOverridesBrowserWindow.Open();
         }
     }
 }
