@@ -115,12 +115,14 @@ internal class PlayModeOverridesWindow : PopupWindowContent
         if (GUI.Button(revertRect, "Revert All"))
         {
             RevertAllChanges();
+            RefreshBrowserIfOpen();
             editorWindow.Close();
         }
 
         if (GUI.Button(applyRect, "Apply All"))
         {
             ApplyAllChanges();
+            RefreshBrowserIfOpen();
             editorWindow.Close();
         }
     }
@@ -174,9 +176,34 @@ internal class PlayModeOverridesWindow : PopupWindowContent
 
     void ApplyAllChanges()
     {
-        // Mark this GameObject's changes to be persisted
-        PlayModeChangesTracker.MarkForPersistence(targetGO);
-        Debug.Log($"[TransformDebug][OverridesWindow.ApplyAll] Marked all changes on GO='{targetGO.name}' for persistence (will be applied when exiting play mode)");
+        // Transform-Änderungen für dieses GameObject annehmen und für den
+        // Übergang zurück in den Edit Mode persistieren – aber nur, wenn der
+        // Transform tatsächlich als geändert erkannt wurde.
+        bool hasTransformChange = false;
+        foreach (var comp in changedComponents)
+        {
+            if (comp is Transform || comp is RectTransform)
+            {
+                hasTransformChange = true;
+                break;
+            }
+        }
+
+        if (hasTransformChange)
+        {
+            PlayModeChangesTracker.AcceptTransformChanges(targetGO);
+        }
+
+        // Nicht-Transform-Komponenten ebenfalls annehmen
+        foreach (var comp in changedComponents)
+        {
+            if (comp == null || comp is Transform)
+                continue;
+
+            PlayModeChangesTracker.AcceptComponentChanges(comp);
+        }
+
+        Debug.Log($"[TransformDebug][OverridesWindow.ApplyAll] Accepted all changes on GO='{targetGO.name}' (will be applied when exiting play mode)");
     }
 
     void RevertComponent(Component comp, ComponentSnapshot snapshot)
@@ -214,6 +241,14 @@ internal class PlayModeOverridesWindow : PopupWindowContent
             case SerializedPropertyType.Vector4: prop.vector4Value = (Vector4)value; break;
             case SerializedPropertyType.Quaternion: prop.quaternionValue = (Quaternion)value; break;
             case SerializedPropertyType.Enum: prop.enumValueIndex = (int)value; break;
+        }
+    }
+
+    private static void RefreshBrowserIfOpen()
+    {
+        if (EditorWindow.HasOpenInstances<PlayModeOverridesBrowserWindow>())
+        {
+            PlayModeOverridesBrowserWindow.Open();
         }
     }
 }

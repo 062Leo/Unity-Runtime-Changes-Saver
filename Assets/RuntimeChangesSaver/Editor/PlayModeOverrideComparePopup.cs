@@ -2,8 +2,6 @@
 using UnityEditor;
 using UnityEngine;
 
-
-
 internal class PlayModeOverrideComparePopup : PopupWindowContent
 {
     private readonly Component liveComponent;
@@ -13,9 +11,14 @@ internal class PlayModeOverrideComparePopup : PopupWindowContent
     private Editor rightEditor;
     private Vector2 leftScroll;
     private Vector2 rightScroll;
+
     private const float MinWidth = 350f;
     private const float HeaderHeight = 24f;
     private const float FooterHeight = 40f;
+    private float cachedHeight = -1f;
+    private bool isDragging;
+    private Vector2 dragStartMouse;
+    private Rect dragStartWindow;
 
     public PlayModeOverrideComparePopup(Component component)
     {
@@ -32,16 +35,53 @@ internal class PlayModeOverrideComparePopup : PopupWindowContent
 
         if (liveComponent is Transform)
         {
-            // 1. Vorbereitung der richtigen Komponente (RectTransform vs Transform)
-            var originalSnapshot = PlayModeChangesTracker.GetSnapshot(go);
+            // Transform-Vergleich: Wenn es einen Eintrag im ScriptableObject-Store gibt,
+            // wird dieser sowohl im Play Mode als auch im Edit Mode für die linke Seite
+            // (Original/Baseline) verwendet. Nur wenn kein Store-Eintrag existiert,
+            // fällt der Play Mode auf die gespeicherten Snapshots zurück.
 
-            if (originalSnapshot != null)
+            // Zuerst versuchen wir, einen passenden Eintrag im Transform-Store zu finden.
+            PlayModeTransformChangesStore.TransformChange storeMatch = null;
+            var store = PlayModeTransformChangesStore.LoadExisting();
+            if (store != null)
             {
-                Debug.Log($"[TransformDebug][ComparePopup.Create] Original snapshot FOUND for GO='{go.name}'. isRect={originalSnapshot.isRectTransform}, pos={originalSnapshot.position}, rot={originalSnapshot.rotation.eulerAngles}, scale={originalSnapshot.scale}");
+                string scenePath = go.scene.path;
+                if (string.IsNullOrEmpty(scenePath))
+                    scenePath = go.scene.name;
 
-                if (originalSnapshot.isRectTransform && liveComponent is RectTransform)
+                string objectPath = GetGameObjectPathForPopup(go.transform);
+
+                foreach (var c in store.changes)
                 {
-                    // AddComponent<RectTransform> ersetzt das normale Transform automatisch
+                    if (c.scenePath == scenePath && c.objectPath == objectPath)
+                    {
+                        storeMatch = c;
+                        break;
+                    }
+                }
+            }
+
+            if (storeMatch != null)
+            {
+                var change = storeMatch;
+
+                bool useOriginal = change.hasOriginalValues;
+
+                Vector3 basePos = useOriginal ? change.originalPosition : change.position;
+                Quaternion baseRot = useOriginal ? change.originalRotation : change.rotation;
+                Vector3 baseScale = useOriginal ? change.originalScale : change.scale;
+
+                Vector2 baseAnchoredPos = useOriginal ? change.originalAnchoredPosition : change.anchoredPosition;
+                Vector3 baseAnchoredPos3D = useOriginal ? change.originalAnchoredPosition3D : change.anchoredPosition3D;
+                Vector2 baseAnchorMin = useOriginal ? change.originalAnchorMin : change.anchorMin;
+                Vector2 baseAnchorMax = useOriginal ? change.originalAnchorMax : change.anchorMax;
+                Vector2 basePivot = useOriginal ? change.originalPivot : change.pivot;
+                Vector2 baseSizeDelta = useOriginal ? change.originalSizeDelta : change.sizeDelta;
+                Vector2 baseOffsetMin = useOriginal ? change.originalOffsetMin : change.offsetMin;
+                Vector2 baseOffsetMax = useOriginal ? change.originalOffsetMax : change.offsetMax;
+
+                if (change.isRectTransform && liveComponent is RectTransform)
+                {
                     snapshotComponent = snapshotGO.AddComponent<RectTransform>();
                 }
                 else
@@ -49,46 +89,88 @@ internal class PlayModeOverrideComparePopup : PopupWindowContent
                     snapshotComponent = snapshotGO.transform;
                 }
 
-                // 2. Werte vom Snapshot auf das Objekt übertragen
                 if (snapshotComponent is RectTransform snapshotRT)
                 {
-                    snapshotRT.anchoredPosition = originalSnapshot.anchoredPosition;
-                    snapshotRT.anchoredPosition3D = originalSnapshot.anchoredPosition3D;
-                    snapshotRT.anchorMin = originalSnapshot.anchorMin;
-                    snapshotRT.anchorMax = originalSnapshot.anchorMax;
-                    snapshotRT.pivot = originalSnapshot.pivot;
-                    snapshotRT.sizeDelta = originalSnapshot.sizeDelta;
-                    snapshotRT.offsetMin = originalSnapshot.offsetMin;
-                    snapshotRT.offsetMax = originalSnapshot.offsetMax;
-
-                    Debug.Log($"[TransformDebug][ComparePopup.Create] Applied RectTransform data to snapshot GO='{snapshotGO.name}': anchoredPos={snapshotRT.anchoredPosition}, sizeDelta={snapshotRT.sizeDelta}, anchorMin={snapshotRT.anchorMin}, anchorMax={snapshotRT.anchorMax}");
+                    snapshotRT.anchoredPosition = baseAnchoredPos;
+                    snapshotRT.anchoredPosition3D = baseAnchoredPos3D;
+                    snapshotRT.anchorMin = baseAnchorMin;
+                    snapshotRT.anchorMax = baseAnchorMax;
+                    snapshotRT.pivot = basePivot;
+                    snapshotRT.sizeDelta = baseSizeDelta;
+                    snapshotRT.offsetMin = baseOffsetMin;
+                    snapshotRT.offsetMax = baseOffsetMax;
                 }
 
-                // Immer auch die Basis-Transform-Werte setzen
-                snapshotComponent.transform.localPosition = originalSnapshot.position;
-                snapshotComponent.transform.localRotation = originalSnapshot.rotation;
-                snapshotComponent.transform.localScale = originalSnapshot.scale;
+                snapshotComponent.transform.localPosition = basePos;
+                snapshotComponent.transform.localRotation = baseRot;
+                snapshotComponent.transform.localScale = baseScale;
 
-                var t = snapshotComponent.transform;
-                Debug.Log($"[TransformDebug][ComparePopup.Create] Applied basic Transform data to snapshot GO='{snapshotGO.name}': pos={t.localPosition}, rot={t.localRotation.eulerAngles}, scale={t.localScale}");
-
-                // 3. SerializedObject synchronisieren (DAS FEHLTE)
-                // Wenn du danach Editor.CreateEditor(snapshotComponent) aufrufst, 
-                // sollte es funktionieren. Falls der Editor schon existiert:
                 SerializedObject so = new SerializedObject(snapshotComponent);
-                so.Update(); // Lädt die soeben gesetzten Werte in das SerializedObject
+                so.Update();
 
-                var posProp = so.FindProperty("m_LocalPosition");
-                var rotProp = so.FindProperty("m_LocalRotation");
-                var scaleProp = so.FindProperty("m_LocalScale");
-                if (posProp != null && scaleProp != null)
+                Debug.Log($"[TransformDebug][ComparePopup.Create] Baseline from TransformStore for GO='{go.name}', useOriginal={useOriginal}, pos={basePos}, rot={baseRot.eulerAngles}, scale={baseScale}");
+            }
+            else if (Application.isPlaying)
+            {
+                // Kein Store-Eintrag vorhanden: Im Play Mode wie bisher über die
+                // gespeicherten Snapshots arbeiten (Originalzustand vor den Änderungen).
+                var originalSnapshot = PlayModeChangesTracker.GetSnapshot(go);
+
+                if (originalSnapshot != null)
                 {
-                    Debug.Log($"[TransformDebug][ComparePopup.Serialized] Serialized snapshot for GO='{snapshotGO.name}': pos={posProp.vector3Value}, scale={scaleProp.vector3Value}");
+                    Debug.Log($"[TransformDebug][ComparePopup.Create] Original snapshot FOUND for GO='{go.name}'. isRect={originalSnapshot.isRectTransform}, pos={originalSnapshot.position}, rot={originalSnapshot.rotation.eulerAngles}, scale={originalSnapshot.scale}");
+
+                    if (originalSnapshot.isRectTransform && liveComponent is RectTransform)
+                    {
+                        // AddComponent<RectTransform> ersetzt das normale Transform automatisch
+                        snapshotComponent = snapshotGO.AddComponent<RectTransform>();
+                    }
+                    else
+                    {
+                        snapshotComponent = snapshotGO.transform;
+                    }
+
+                    // Werte vom Snapshot auf das Objekt übertragen
+                    if (snapshotComponent is RectTransform snapshotRT)
+                    {
+                        snapshotRT.anchoredPosition = originalSnapshot.anchoredPosition;
+                        snapshotRT.anchoredPosition3D = originalSnapshot.anchoredPosition3D;
+                        snapshotRT.anchorMin = originalSnapshot.anchorMin;
+                        snapshotRT.anchorMax = originalSnapshot.anchorMax;
+                        snapshotRT.pivot = originalSnapshot.pivot;
+                        snapshotRT.sizeDelta = originalSnapshot.sizeDelta;
+                        snapshotRT.offsetMin = originalSnapshot.offsetMin;
+                        snapshotRT.offsetMax = originalSnapshot.offsetMax;
+
+                        Debug.Log($"[TransformDebug][ComparePopup.Create] Applied RectTransform data to snapshot GO='{snapshotGO.name}': anchoredPos={snapshotRT.anchoredPosition}, sizeDelta={snapshotRT.sizeDelta}, anchorMin={snapshotRT.anchorMin}, anchorMax={snapshotRT.anchorMax}");
+                    }
+
+                    snapshotComponent.transform.localPosition = originalSnapshot.position;
+                    snapshotComponent.transform.localRotation = originalSnapshot.rotation;
+                    snapshotComponent.transform.localScale = originalSnapshot.scale;
+
+                    var t = snapshotComponent.transform;
+                    Debug.Log($"[TransformDebug][ComparePopup.Create] Applied basic Transform data to snapshot GO='{snapshotGO.name}': pos={t.localPosition}, rot={t.localRotation.eulerAngles}, scale={t.localScale}");
+
+                    SerializedObject so = new SerializedObject(snapshotComponent);
+                    so.Update();
+
+                    var posProp = so.FindProperty("m_LocalPosition");
+                    var rotProp = so.FindProperty("m_LocalRotation");
+                    var scaleProp = so.FindProperty("m_LocalScale");
+                    if (posProp != null && scaleProp != null)
+                    {
+                        Debug.Log($"[TransformDebug][ComparePopup.Serialized] Serialized snapshot for GO='{snapshotGO.name}': pos={posProp.vector3Value}, scale={scaleProp.vector3Value}");
+                    }
+                }
+                else
+                {
+                    Debug.Log($"[TransformDebug][ComparePopup.Create] Original snapshot MISSING for GO='{go.name}' (Transform, Play Mode)");
                 }
             }
             else
             {
-                Debug.Log($"[TransformDebug][ComparePopup.Create] Original snapshot MISSING for GO='{go.name}' (Transform)");
+                Debug.Log($"[TransformDebug][ComparePopup.Create] No TransformChange in store for GO='{go.name}' (Edit Mode, no baseline available)");
             }
         }
         else
@@ -98,28 +180,166 @@ internal class PlayModeOverrideComparePopup : PopupWindowContent
             var type = liveComponent.GetType();
             snapshotComponent = snapshotGO.AddComponent(type);
 
-            // Restore values from snapshot
-            string compKey = PlayModeChangesTracker.GetComponentKey(liveComponent);
-            var snapshot = PlayModeChangesTracker.GetComponentSnapshot(go, compKey);
-
-            if (snapshot != null)
+            if (Application.isPlaying)
             {
-                SerializedObject so = new SerializedObject(snapshotComponent);
+                // Play Mode: zunächst versuchen wir – analog zu Transforms – einen passenden
+                // Eintrag im Component-Store zu finden (für bereits akzeptierte Overrides).
+                PlayModeComponentChangesStore.ComponentChange match = null;
+                var compStore = PlayModeComponentChangesStore.LoadExisting();
 
-                foreach (var kvp in snapshot.properties)
+                if (compStore != null)
                 {
-                    SerializedProperty prop = so.FindProperty(kvp.Key);
-                    if (prop != null)
+                    string scenePath = go.scene.path;
+                    if (string.IsNullOrEmpty(scenePath))
+                        scenePath = go.scene.name;
+
+                    string objectPath = GetGameObjectPathForPopup(go.transform);
+                    string componentType = type.AssemblyQualifiedName;
+                    var allOfType = go.GetComponents(type);
+                    int index = System.Array.IndexOf(allOfType, liveComponent);
+
+                    foreach (var c in compStore.changes)
                     {
-                        try
+                        if (c.scenePath == scenePath &&
+                            c.objectPath == objectPath &&
+                            c.componentType == componentType &&
+                            c.componentIndex == index)
                         {
-                            SetPropertyValue(prop, kvp.Value);
+                            match = c;
+                            break;
                         }
-                        catch { }
                     }
                 }
 
-                so.ApplyModifiedPropertiesWithoutUndo();
+                if (match != null)
+                {
+                    SerializedObject so = new SerializedObject(snapshotComponent);
+
+                    var baseValues = (match.hasOriginalValues &&
+                                      match.originalSerializedValues != null &&
+                                      match.originalSerializedValues.Count == match.propertyPaths.Count)
+                        ? match.originalSerializedValues
+                        : match.serializedValues;
+
+                    var baseTypes = (match.hasOriginalValues &&
+                                     match.originalValueTypes != null &&
+                                     match.originalValueTypes.Count == match.propertyPaths.Count)
+                        ? match.originalValueTypes
+                        : match.valueTypes;
+
+                    for (int i = 0; i < match.propertyPaths.Count; i++)
+                    {
+                        string path = match.propertyPaths[i];
+                        SerializedProperty prop = so.FindProperty(path);
+                        if (prop == null)
+                            continue;
+
+                        string typeName = (i < baseTypes.Count) ? baseTypes[i] : string.Empty;
+                        string value = (i < baseValues.Count) ? baseValues[i] : string.Empty;
+
+                        try
+                        {
+                            ApplySerializedComponentValueForPopup(prop, typeName, value);
+                        }
+                        catch { }
+                    }
+
+                    so.ApplyModifiedPropertiesWithoutUndo();
+                }
+                else
+                {
+                    // Fallback: wie bisher über den ComponentSnapshot arbeiten.
+                    string compKey = PlayModeChangesTracker.GetComponentKey(liveComponent);
+                    var snapshot = PlayModeChangesTracker.GetComponentSnapshot(go, compKey);
+
+                    if (snapshot != null)
+                    {
+                        SerializedObject so = new SerializedObject(snapshotComponent);
+
+                        foreach (var kvp in snapshot.properties)
+                        {
+                            SerializedProperty prop = so.FindProperty(kvp.Key);
+                            if (prop != null)
+                            {
+                                try
+                                {
+                                    SetPropertyValue(prop, kvp.Value);
+                                }
+                                catch { }
+                            }
+                        }
+
+                        so.ApplyModifiedPropertiesWithoutUndo();
+                    }
+                }
+            }
+            else
+            {
+                // Edit Mode (z.B. Browser): Originalwerte aus dem Component-Store holen.
+                var compStore = PlayModeComponentChangesStore.LoadExisting();
+                PlayModeComponentChangesStore.ComponentChange match = null;
+
+                if (compStore != null)
+                {
+                    string scenePath = go.scene.path;
+                    if (string.IsNullOrEmpty(scenePath))
+                        scenePath = go.scene.name;
+
+                    string objectPath = GetGameObjectPathForPopup(go.transform);
+                    string componentType = type.AssemblyQualifiedName;
+                    var allOfType = go.GetComponents(type);
+                    int index = System.Array.IndexOf(allOfType, liveComponent);
+
+                    foreach (var c in compStore.changes)
+                    {
+                        if (c.scenePath == scenePath &&
+                            c.objectPath == objectPath &&
+                            c.componentType == componentType &&
+                            c.componentIndex == index)
+                        {
+                            match = c;
+                            break;
+                        }
+                    }
+                }
+
+                if (match != null)
+                {
+                    SerializedObject so = new SerializedObject(snapshotComponent);
+
+                    // Wenn Originalwerte vorhanden und passend dimensioniert sind, diese verwenden,
+                    // andernfalls auf die aktuell persistierten Werte zurückfallen.
+                    var baseValues = (match.hasOriginalValues &&
+                                      match.originalSerializedValues != null &&
+                                      match.originalSerializedValues.Count == match.propertyPaths.Count)
+                        ? match.originalSerializedValues
+                        : match.serializedValues;
+
+                    var baseTypes = (match.hasOriginalValues &&
+                                     match.originalValueTypes != null &&
+                                     match.originalValueTypes.Count == match.propertyPaths.Count)
+                        ? match.originalValueTypes
+                        : match.valueTypes;
+
+                    for (int i = 0; i < match.propertyPaths.Count; i++)
+                    {
+                        string path = match.propertyPaths[i];
+                        SerializedProperty prop = so.FindProperty(path);
+                        if (prop == null)
+                            continue;
+
+                        string typeName = (i < baseTypes.Count) ? baseTypes[i] : string.Empty;
+                        string value = (i < baseValues.Count) ? baseValues[i] : string.Empty;
+
+                        try
+                        {
+                            ApplySerializedComponentValueForPopup(prop, typeName, value);
+                        }
+                        catch { }
+                    }
+
+                    so.ApplyModifiedPropertiesWithoutUndo();
+                }
             }
         }
 
@@ -158,9 +378,115 @@ internal class PlayModeOverrideComparePopup : PopupWindowContent
         }
     }
 
+    private void ApplySerializedComponentValueForPopup(SerializedProperty prop, string typeName, string value)
+    {
+        switch (typeName)
+        {
+            case "Integer":
+                if (int.TryParse(value, out var iVal)) prop.intValue = iVal;
+                break;
+            case "Boolean":
+                if (bool.TryParse(value, out var bVal)) prop.boolValue = bVal;
+                break;
+            case "Float":
+                if (float.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var fVal)) prop.floatValue = fVal;
+                break;
+            case "String":
+                prop.stringValue = value;
+                break;
+            case "Color":
+                Color col; if (ColorUtility.TryParseHtmlString(value, out col)) prop.colorValue = col;
+                break;
+            case "Vector2":
+                prop.vector2Value = DeserializeVector2ForPopup(value);
+                break;
+            case "Vector3":
+                prop.vector3Value = DeserializeVector3ForPopup(value);
+                break;
+            case "Vector4":
+                prop.vector4Value = DeserializeVector4ForPopup(value);
+                break;
+            case "Quaternion":
+                prop.quaternionValue = DeserializeQuaternionForPopup(value);
+                break;
+            case "Enum":
+                if (int.TryParse(value, out var eVal)) prop.enumValueIndex = eVal;
+                break;
+        }
+    }
+
+    private Vector2 DeserializeVector2ForPopup(string s)
+    {
+        var parts = s.Split(',');
+        if (parts.Length != 2) return Vector2.zero;
+        float.TryParse(parts[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var x);
+        float.TryParse(parts[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var y);
+        return new Vector2(x, y);
+    }
+
+    private Vector3 DeserializeVector3ForPopup(string s)
+    {
+        var parts = s.Split(',');
+        if (parts.Length != 3) return Vector3.zero;
+        float.TryParse(parts[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var x);
+        float.TryParse(parts[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var y);
+        float.TryParse(parts[2], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var z);
+        return new Vector3(x, y, z);
+    }
+
+    private Vector4 DeserializeVector4ForPopup(string s)
+    {
+        var parts = s.Split(',');
+        if (parts.Length != 4) return Vector4.zero;
+        float.TryParse(parts[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var x);
+        float.TryParse(parts[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var y);
+        float.TryParse(parts[2], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var z);
+        float.TryParse(parts[3], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var w);
+        return new Vector4(x, y, z, w);
+    }
+
+    private Quaternion DeserializeQuaternionForPopup(string s)
+    {
+        var parts = s.Split(',');
+        if (parts.Length != 4) return Quaternion.identity;
+        float.TryParse(parts[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var x);
+        float.TryParse(parts[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var y);
+        float.TryParse(parts[2], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var z);
+        float.TryParse(parts[3], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var w);
+        return new Quaternion(x, y, z, w);
+    }
+
+    private float EstimateInspectorHeight()
+    {
+        if (rightEditor == null || rightEditor.target == null)
+            return 300f;
+
+        SerializedObject so = new SerializedObject(rightEditor.target);
+        SerializedProperty prop = so.GetIterator();
+
+        int lineCount = 0;
+        bool enterChildren = true;
+        while (prop.NextVisible(enterChildren))
+        {
+            enterChildren = false;
+            if (prop.name == "m_Script")
+                continue;
+            lineCount++;
+        }
+
+        float lineHeight = EditorGUIUtility.singleLineHeight + 4f;
+        float estimated = lineCount * lineHeight + HeaderHeight + 20f;
+        return Mathf.Clamp(estimated, 200f, 800f);
+    }
+
     public override Vector2 GetWindowSize()
     {
-        return new Vector2(MinWidth * 2 + 6, 500 + FooterHeight);
+        if (cachedHeight < 0f)
+        {
+            cachedHeight = EstimateInspectorHeight();
+        }
+
+        return new Vector2(MinWidth * 2 + 6, cachedHeight + FooterHeight);
     }
 
     public override void OnGUI(Rect rect)
@@ -178,11 +504,55 @@ internal class PlayModeOverrideComparePopup : PopupWindowContent
         Rect rightColumn = new Rect(rect.x + columnWidth + 6, rect.y, columnWidth, contentHeight);
         Rect footerRect = new Rect(rect.x, rect.y + contentHeight, rect.width, FooterHeight);
 
+        HandleWindowDragging(rect);
+
         DrawColumn(leftColumn, leftEditor, ref leftScroll, "Original", false);
         DrawSeparator(new Rect(rect.x + columnWidth, rect.y, 6, contentHeight));
         DrawColumn(rightColumn, rightEditor, ref rightScroll, "Play Mode", true);
 
         DrawFooter(footerRect);
+    }
+
+    void HandleWindowDragging(Rect windowRect)
+    {
+        if (editorWindow == null)
+            return;
+
+        Rect dragRect = new Rect(windowRect.x, windowRect.y, windowRect.width, HeaderHeight);
+        Event e = Event.current;
+
+        switch (e.type)
+        {
+            case EventType.MouseDown:
+                if (e.button == 0 && dragRect.Contains(e.mousePosition))
+                {
+                    isDragging = true;
+                    dragStartMouse = GUIUtility.GUIToScreenPoint(e.mousePosition);
+                    dragStartWindow = editorWindow.position;
+                    e.Use();
+                }
+                break;
+
+            case EventType.MouseDrag:
+                if (isDragging)
+                {
+                    Vector2 current = GUIUtility.GUIToScreenPoint(e.mousePosition);
+                    Vector2 delta = current - dragStartMouse;
+                    Rect pos = dragStartWindow;
+                    pos.position += delta;
+                    editorWindow.position = pos;
+                    e.Use();
+                }
+                break;
+
+            case EventType.MouseUp:
+                if (isDragging && e.button == 0)
+                {
+                    isDragging = false;
+                    e.Use();
+                }
+                break;
+        }
     }
 
     void DrawColumn(Rect columnRect, Editor editor, ref Vector2 scroll, string title, bool editable)
@@ -201,7 +571,8 @@ internal class PlayModeOverrideComparePopup : PopupWindowContent
 
         GUI.BeginGroup(contentRect);
 
-        Rect viewRect = new Rect(0, 0, contentRect.width - 16, 2000);
+        Rect viewRect = new Rect(0, 0, contentRect.width - 16, contentRect.height);
+
         scroll = GUI.BeginScrollView(
             new Rect(0, 0, contentRect.width, contentRect.height),
             scroll,
@@ -280,7 +651,7 @@ internal class PlayModeOverrideComparePopup : PopupWindowContent
                 ? new Color(0.15f, 0.15f, 0.15f)
                 : new Color(0.6f, 0.6f, 0.6f);
             EditorGUI.DrawRect(rect, separatorColor);
-        }
+        } 
     }
 
     void DrawFooter(Rect rect)
@@ -301,7 +672,18 @@ internal class PlayModeOverrideComparePopup : PopupWindowContent
 
         if (GUILayout.Button("Apply", GUILayout.Width(120f), GUILayout.Height(28f)))
         {
-            // Changes are already applied (we're in play mode editing live)
+            // Transform-Änderungen für dieses GameObject annehmen und für
+            // den späteren Übergang in den Edit Mode persistieren.
+            if (liveComponent is Transform || liveComponent is RectTransform)
+            {
+                PlayModeChangesTracker.AcceptTransformChanges(liveComponent.gameObject);
+            }
+            else
+            {
+                PlayModeChangesTracker.AcceptComponentChanges(liveComponent);
+            }
+
+            RefreshBrowserIfOpen();
             editorWindow.Close();
         }
 
@@ -310,6 +692,21 @@ internal class PlayModeOverrideComparePopup : PopupWindowContent
 
         GUILayout.Space(6);
         GUILayout.EndArea();
+    }
+
+    private static string GetGameObjectPathForPopup(Transform transform)
+    {
+        if (transform == null)
+            return string.Empty;
+
+        var path = transform.name;
+        while (transform.parent != null)
+        {
+            transform = transform.parent;
+            path = transform.name + "/" + path;
+        }
+
+        return path;
     }
 
     void RevertChanges()
@@ -336,7 +733,85 @@ internal class PlayModeOverrideComparePopup : PopupWindowContent
         }
 
         targetSO.ApplyModifiedProperties();
+
+        // Im Play Mode zusätzlich die Baseline im PlayModeChangesTracker
+        // für dieses Objekt/diese Komponente aktualisieren, damit
+        // GetChangedComponents sie nicht weiter als "geändert" meldet.
+        if (Application.isPlaying && liveComponent != null)
+        {
+            if (liveComponent is Transform || liveComponent is RectTransform)
+            {
+                PlayModeChangesTracker.ResetTransformBaseline(liveComponent.gameObject);
+            }
+            else
+            {
+                PlayModeChangesTracker.ResetComponentBaseline(liveComponent);
+            }
+        }
+
         Debug.Log($"[TransformDebug][ComparePopup.Revert] Reverted {liveComponent.GetType().Name} to original values");
+
+        if (liveComponent != null)
+        {
+            var go = liveComponent.gameObject;
+            string scenePath = go.scene.path;
+            if (string.IsNullOrEmpty(scenePath))
+                scenePath = go.scene.name;
+
+            string objectPath = GetGameObjectPathForPopup(go.transform);
+
+            if (liveComponent is Transform || liveComponent is RectTransform)
+            {
+                var tStore = PlayModeTransformChangesStore.LoadExisting();
+                if (tStore != null)
+                {
+                    int index = tStore.changes.FindIndex(c => c.scenePath == scenePath && c.objectPath == objectPath);
+                    if (index >= 0)
+                    {
+                        tStore.changes.RemoveAt(index);
+                        EditorUtility.SetDirty(tStore);
+                        AssetDatabase.SaveAssets();
+                        Debug.Log($"[TransformDebug][ComparePopup.Revert] Removed Transform entry from store for GO='{go.name}'");
+                    }
+                }
+            }
+            else
+            {
+                var cStore = PlayModeComponentChangesStore.LoadExisting();
+                if (cStore != null)
+                {
+                    var type = liveComponent.GetType();
+                    string componentType = type.AssemblyQualifiedName;
+                    var allOfType = go.GetComponents(type);
+                    int compIndex = System.Array.IndexOf(allOfType, liveComponent);
+
+                    int index = cStore.changes.FindIndex(c =>
+                        c.scenePath == scenePath &&
+                        c.objectPath == objectPath &&
+                        c.componentType == componentType &&
+                        c.componentIndex == compIndex);
+
+                    if (index >= 0)
+                    {
+                        cStore.changes.RemoveAt(index);
+                        EditorUtility.SetDirty(cStore);
+                        AssetDatabase.SaveAssets();
+                        Debug.Log($"[TransformDebug][ComparePopup.Revert] Removed Component entry from store for GO='{go.name}', comp='{liveComponent.GetType().Name}'");
+                    }
+                }
+            }
+        }
+
+        // Nach einem erfolgreichen Revert den Browser aktualisieren, falls er geöffnet ist.
+        RefreshBrowserIfOpen();
+    }
+
+    private static void RefreshBrowserIfOpen()
+    {
+        if (EditorWindow.HasOpenInstances<PlayModeOverridesBrowserWindow>())
+        {
+            PlayModeOverridesBrowserWindow.Open();
+        }
     }
 
     public override void OnClose()

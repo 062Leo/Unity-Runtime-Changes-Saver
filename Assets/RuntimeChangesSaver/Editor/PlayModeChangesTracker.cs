@@ -70,6 +70,20 @@ public static class PlayModeChangesTracker
         switch (state)
         {
             case PlayModeStateChange.ExitingEditMode:
+                // Beim Start in den Play Mode immer den persistenten Store leeren,
+                // damit wir nur Änderungen aus der aktuellen Session übernehmen.
+                var transformStoreOnEnterPlay = PlayModeTransformChangesStore.LoadExisting();
+                if (transformStoreOnEnterPlay != null)
+                {
+                    transformStoreOnEnterPlay.Clear();
+                }
+
+                var componentStoreOnEnterPlay = PlayModeComponentChangesStore.LoadExisting();
+                if (componentStoreOnEnterPlay != null)
+                {
+                    componentStoreOnEnterPlay.Clear();
+                }
+
                 CaptureSnapshotsInEditMode();
                 // Also set flag in case ExitingEditMode doesn't capture properly
                 EditorPrefs.SetBool(PREFS_KEY, snapshots.Count == 0);
@@ -86,11 +100,6 @@ public static class PlayModeChangesTracker
             case PlayModeStateChange.EnteredEditMode:
                 EditorPrefs.DeleteKey(PREFS_KEY);
                 ApplyChangesFromStoreToEditMode();
-                // Clear snapshots when returning to edit mode
-                snapshots.Clear();
-                componentSnapshots.Clear();
-                selectedProperties.Clear();
-                markedForPersistence.Clear();
                 break;
         }
     }
@@ -251,6 +260,35 @@ public static class PlayModeChangesTracker
 
         string goPath = GetGameObjectPath(go.transform);
         return $"{scenePath}|{goPath}";
+    }
+
+    // Wird verwendet, um nach einem Revert im Compare-Popup im Play Mode
+    // die Baseline für den Transform eines bestimmten GameObjects neu zu setzen,
+    // damit GetChangedComponents dieses Transform nicht mehr als "geändert" meldet.
+    public static void ResetTransformBaseline(GameObject go)
+    {
+        if (go == null) return;
+        string key = GetGameObjectKey(go);
+        snapshots[key] = new TransformSnapshot(go);
+    }
+
+    // Wird verwendet, um nach einem Revert im Compare-Popup im Play Mode
+    // die Baseline nur für eine spezifische Nicht-Transform-Komponente neu zu setzen.
+    public static void ResetComponentBaseline(Component comp)
+    {
+        if (comp == null) return;
+
+        GameObject go = comp.gameObject;
+        string goKey = GetGameObjectKey(go);
+
+        if (!componentSnapshots.TryGetValue(goKey, out var dict))
+        {
+            dict = new Dictionary<string, ComponentSnapshot>();
+            componentSnapshots[goKey] = dict;
+        }
+
+        string compKey = GetComponentKey(comp);
+        dict[compKey] = CaptureComponentSnapshot(comp);
     }
 
     public static string GetComponentKey(Component comp)
@@ -440,6 +478,294 @@ public static class PlayModeChangesTracker
         AssetDatabase.SaveAssets();
     }
 
+    public static void AcceptComponentChanges(Component comp)
+    {
+        if (comp == null)
+            return;
+
+        GameObject go = comp.gameObject;
+        string goKey = GetGameObjectKey(go);
+        string compKey = GetComponentKey(comp);
+
+        // Ursprünglichen Snapshot sichern, bevor wir die Baseline verschieben.
+        ComponentSnapshot originalSnapshot = null;
+
+        if (!componentSnapshots.TryGetValue(goKey, out var dict))
+        {
+            dict = new Dictionary<string, ComponentSnapshot>();
+            componentSnapshots[goKey] = dict;
+        }
+        else
+        {
+            if (dict.TryGetValue(compKey, out var existingSnapshot))
+            {
+                originalSnapshot = existingSnapshot;
+            }
+        }
+
+        // Baseline für diese Komponente auf aktuellen Zustand verschieben
+        ComponentSnapshot currentSnapshot = CaptureComponentSnapshot(comp);
+        dict[compKey] = currentSnapshot;
+
+        // Änderungen im ScriptableObject speichern (inkl. Originalwerte, falls verfügbar).
+        RecordComponentChangeToStore(comp, goKey, compKey, originalSnapshot);
+    }
+
+    private static void RecordComponentChangeToStore(Component comp, string goKey, string compKey, ComponentSnapshot originalSnapshot)
+    {
+        var store = PlayModeComponentChangesStore.LoadOrCreate();
+
+        string scenePath = comp.gameObject.scene.path;
+        string objectPath = GetGameObjectPath(comp.transform);
+        var allOfType = comp.gameObject.GetComponents(comp.GetType());
+        int index = System.Array.IndexOf(allOfType, comp);
+
+        // Erzeuge einen Schnappschuss des aktuellen Zustands
+        SerializedObject so = new SerializedObject(comp);
+        SerializedProperty prop = so.GetIterator();
+
+        var propertyPaths = new List<string>();
+        var values = new List<string>();
+        var typeNames = new List<string>();
+
+        bool enterChildren = true;
+        while (prop.NextVisible(enterChildren))
+        {
+            enterChildren = false;
+            if (prop.name == "m_Script")
+                continue;
+
+            propertyPaths.Add(prop.propertyPath);
+            SerializeComponentProperty(prop, out string typeName, out string serializedValue);
+            typeNames.Add(typeName);
+            values.Add(serializedValue);
+        }
+
+        // Bestehenden Eintrag für diese Komponente suchen
+        int existing = store.changes.FindIndex(c => c.scenePath == scenePath && c.objectPath == objectPath && c.componentType == comp.GetType().AssemblyQualifiedName && c.componentIndex == index);
+
+        // Originalwerte bestimmen:
+        // - Wenn bereits ein Eintrag mit Originalwerten existiert, diesen beibehalten.
+        // - Andernfalls aus dem übergebenen Snapshot ableiten (falls vorhanden).
+        bool hasOriginal = false;
+        List<string> originalValues = new List<string>();
+        List<string> originalTypes = new List<string>();
+
+        if (existing >= 0 && store.changes[existing].hasOriginalValues)
+        {
+            var existingChange = store.changes[existing];
+            hasOriginal = true;
+            if (existingChange.originalSerializedValues != null)
+                originalValues.AddRange(existingChange.originalSerializedValues);
+            if (existingChange.originalValueTypes != null)
+                originalTypes.AddRange(existingChange.originalValueTypes);
+        }
+        else if (originalSnapshot != null)
+        {
+            hasOriginal = true;
+
+            foreach (var path in propertyPaths)
+            {
+                if (originalSnapshot.properties != null && originalSnapshot.properties.TryGetValue(path, out var originalValue) && originalValue != null)
+                {
+                    SerializeSnapshotValue(originalValue, out string typeName, out string serializedValue);
+                    originalTypes.Add(typeName);
+                    originalValues.Add(serializedValue);
+                }
+                else
+                {
+                    originalTypes.Add(string.Empty);
+                    originalValues.Add(string.Empty);
+                }
+            }
+        }
+
+        var change = new PlayModeComponentChangesStore.ComponentChange
+        {
+            scenePath = scenePath,
+            objectPath = objectPath,
+            componentType = comp.GetType().AssemblyQualifiedName,
+            componentIndex = index,
+            propertyPaths = propertyPaths,
+            serializedValues = values,
+            valueTypes = typeNames,
+            hasOriginalValues = hasOriginal,
+            originalSerializedValues = originalValues,
+            originalValueTypes = originalTypes
+        };
+
+        if (existing >= 0)
+        {
+            store.changes[existing] = change;
+        }
+        else
+        {
+            store.changes.Add(change);
+        }
+
+        EditorUtility.SetDirty(store);
+        AssetDatabase.SaveAssets();
+    }
+
+    private static void SerializeComponentProperty(SerializedProperty prop, out string typeName, out string serializedValue)
+    {
+        typeName = "";
+        serializedValue = "";
+
+        switch (prop.propertyType)
+        {
+            case SerializedPropertyType.Integer:
+                typeName = "Integer";
+                serializedValue = prop.intValue.ToString();
+                break;
+            case SerializedPropertyType.Boolean:
+                typeName = "Boolean";
+                serializedValue = prop.boolValue.ToString();
+                break;
+            case SerializedPropertyType.Float:
+                typeName = "Float";
+                serializedValue = prop.floatValue.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                break;
+            case SerializedPropertyType.String:
+                typeName = "String";
+                serializedValue = prop.stringValue ?? string.Empty;
+                break;
+            case SerializedPropertyType.Color:
+                typeName = "Color";
+                serializedValue = "#" + ColorUtility.ToHtmlStringRGBA(prop.colorValue);
+                break;
+            case SerializedPropertyType.Vector2:
+                typeName = "Vector2";
+                serializedValue = SerializeVector2(prop.vector2Value);
+                break;
+            case SerializedPropertyType.Vector3:
+                typeName = "Vector3";
+                serializedValue = SerializeVector3(prop.vector3Value);
+                break;
+            case SerializedPropertyType.Vector4:
+                typeName = "Vector4";
+                serializedValue = SerializeVector4(prop.vector4Value);
+                break;
+            case SerializedPropertyType.Quaternion:
+                typeName = "Quaternion";
+                serializedValue = SerializeQuaternion(prop.quaternionValue);
+                break;
+            case SerializedPropertyType.Enum:
+                typeName = "Enum";
+                serializedValue = prop.enumValueIndex.ToString();
+                break;
+            default:
+                // Nicht unterstützte Typen ignorieren wir
+                typeName = string.Empty;
+                serializedValue = string.Empty;
+                break;
+        }
+    }
+
+    private static void SerializeSnapshotValue(object value, out string typeName, out string serializedValue)
+    {
+        typeName = string.Empty;
+        serializedValue = string.Empty;
+
+        if (value == null)
+            return;
+
+        switch (value)
+        {
+            case int i:
+                typeName = "Integer";
+                serializedValue = i.ToString();
+                break;
+            case bool b:
+                typeName = "Boolean";
+                serializedValue = b.ToString();
+                break;
+            case float f:
+                typeName = "Float";
+                serializedValue = f.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                break;
+            case string s:
+                typeName = "String";
+                serializedValue = s ?? string.Empty;
+                break;
+            case Color c:
+                typeName = "Color";
+                serializedValue = "#" + ColorUtility.ToHtmlStringRGBA(c);
+                break;
+            case Vector2 v2:
+                typeName = "Vector2";
+                serializedValue = SerializeVector2(v2);
+                break;
+            case Vector3 v3:
+                typeName = "Vector3";
+                serializedValue = SerializeVector3(v3);
+                break;
+            case Vector4 v4:
+                typeName = "Vector4";
+                serializedValue = SerializeVector4(v4);
+                break;
+            case Quaternion q:
+                typeName = "Quaternion";
+                serializedValue = SerializeQuaternion(q);
+                break;
+            case Enum e:
+                typeName = "Enum";
+                serializedValue = Convert.ToInt32(e).ToString();
+                break;
+            default:
+                // Nicht unterstützte Typen bleiben leer
+                typeName = string.Empty;
+                serializedValue = string.Empty;
+                break;
+        }
+    }
+
+    private static string SerializeVector2(Vector2 v) => $"{v.x.ToString(System.Globalization.CultureInfo.InvariantCulture)},{v.y.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+    private static string SerializeVector3(Vector3 v) => $"{v.x.ToString(System.Globalization.CultureInfo.InvariantCulture)},{v.y.ToString(System.Globalization.CultureInfo.InvariantCulture)},{v.z.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+    private static string SerializeVector4(Vector4 v) => $"{v.x.ToString(System.Globalization.CultureInfo.InvariantCulture)},{v.y.ToString(System.Globalization.CultureInfo.InvariantCulture)},{v.z.ToString(System.Globalization.CultureInfo.InvariantCulture)},{v.w.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+    private static string SerializeQuaternion(Quaternion q) => $"{q.x.ToString(System.Globalization.CultureInfo.InvariantCulture)},{q.y.ToString(System.Globalization.CultureInfo.InvariantCulture)},{q.z.ToString(System.Globalization.CultureInfo.InvariantCulture)},{q.w.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+
+    private static Vector2 DeserializeVector2(string s)
+    {
+        var parts = s.Split(',');
+        if (parts.Length != 2) return Vector2.zero;
+        float.TryParse(parts[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var x);
+        float.TryParse(parts[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var y);
+        return new Vector2(x, y);
+    }
+
+    private static Vector3 DeserializeVector3(string s)
+    {
+        var parts = s.Split(',');
+        if (parts.Length != 3) return Vector3.zero;
+        float.TryParse(parts[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var x);
+        float.TryParse(parts[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var y);
+        float.TryParse(parts[2], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var z);
+        return new Vector3(x, y, z);
+    }
+
+    private static Vector4 DeserializeVector4(string s)
+    {
+        var parts = s.Split(',');
+        if (parts.Length != 4) return Vector4.zero;
+        float.TryParse(parts[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var x);
+        float.TryParse(parts[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var y);
+        float.TryParse(parts[2], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var z);
+        float.TryParse(parts[3], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var w);
+        return new Vector4(x, y, z, w);
+    }
+
+    private static Quaternion DeserializeQuaternion(string s)
+    {
+        var parts = s.Split(',');
+        if (parts.Length != 4) return Quaternion.identity;
+        float.TryParse(parts[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var x);
+        float.TryParse(parts[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var y);
+        float.TryParse(parts[2], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var z);
+        float.TryParse(parts[3], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var w);
+        return new Quaternion(x, y, z, w);
+    }
+
     public static void PersistSelectedChangesForAll()
     {
         RecordSelectedChangesToStore();
@@ -454,62 +780,57 @@ public static class PlayModeChangesTracker
 
     private static void ApplyChangesFromStoreToEditMode()
     {
-        if (markedForPersistence.Count == 0)
+        // Transform-Änderungen werden über das ScriptableObject
+        // PlayModeTransformChangesStore persistiert. Dies überlebt
+        // Domain Reloads besser als statische Dictionaries.
+
+        var store = PlayModeTransformChangesStore.LoadExisting();
+        if (store != null && store.changes.Count > 0)
         {
-            return;
-        }
-
-        foreach (string goKey in markedForPersistence)
-        {
-            // Parse key to get scene and object path
-            var parts = goKey.Split('|');
-            if (parts.Length != 2) continue;
-
-            string scenePath = parts[0];
-            string goPath = parts[1];
-
-            var scene = EditorSceneManager.GetSceneByPath(scenePath);
-            if (!scene.IsValid())
-                scene = EditorSceneManager.GetSceneByName(scenePath);
-
-            if (!scene.IsValid())
+            foreach (var change in store.changes)
             {
-                continue;
-            }
+                var scene = EditorSceneManager.GetSceneByPath(change.scenePath);
+                if (!scene.IsValid())
+                    scene = EditorSceneManager.GetSceneByName(change.scenePath);
 
-            GameObject go = FindInSceneByPath(scene, goPath);
-            if (go == null)
-            {
-                continue;
-            }
+                if (!scene.IsValid())
+                    continue;
 
-            // Apply Transform changes
-            if (snapshots.ContainsKey(goKey))
-            {
-                TransformSnapshot original = snapshots[goKey];
+                GameObject go = FindInSceneByPath(scene, change.objectPath);
+                if (go == null)
+                    continue;
+
                 Transform t = go.transform;
                 RectTransform rt = t as RectTransform;
 
-                // Get current values (from play mode)
-                TransformSnapshot current = new TransformSnapshot(go);
-
                 Undo.RecordObject(t, "Apply Play Mode Transform Changes");
 
-                // Apply all transform properties
-                t.localPosition = current.position;
-                t.localRotation = current.rotation;
-                t.localScale = current.scale;
-
-                if (rt != null && current.isRectTransform)
+                // Wenn modifiedProperties gesetzt ist, nur diese anwenden,
+                // sonst alle Transform-Werte.
+                if (change.modifiedProperties != null && change.modifiedProperties.Count > 0)
                 {
-                    rt.anchoredPosition = current.anchoredPosition;
-                    rt.anchoredPosition3D = current.anchoredPosition3D;
-                    rt.anchorMin = current.anchorMin;
-                    rt.anchorMax = current.anchorMax;
-                    rt.pivot = current.pivot;
-                    rt.sizeDelta = current.sizeDelta;
-                    rt.offsetMin = current.offsetMin;
-                    rt.offsetMax = current.offsetMax;
+                    foreach (var prop in change.modifiedProperties)
+                    {
+                        ApplyPropertyToTransform(t, rt, change, prop);
+                    }
+                }
+                else
+                {
+                    t.localPosition = change.position;
+                    t.localRotation = change.rotation;
+                    t.localScale = change.scale;
+
+                    if (rt != null && change.isRectTransform)
+                    {
+                        rt.anchoredPosition = change.anchoredPosition;
+                        rt.anchoredPosition3D = change.anchoredPosition3D;
+                        rt.anchorMin = change.anchorMin;
+                        rt.anchorMax = change.anchorMax;
+                        rt.pivot = change.pivot;
+                        rt.sizeDelta = change.sizeDelta;
+                        rt.offsetMin = change.offsetMin;
+                        rt.offsetMax = change.offsetMax;
+                    }
                 }
 
                 EditorUtility.SetDirty(go);
@@ -520,27 +841,237 @@ public static class PlayModeChangesTracker
 
                 Debug.Log($"[TransformDebug][Tracker.ApplyChanges] Applied Transform changes to GO='{go.name}', scene='{scene.path}'");
             }
+        }
 
-            // Apply Component changes
-            if (componentSnapshots.ContainsKey(goKey))
+        // Nicht-Transform-Komponenten über einen separaten Store anwenden
+        var compStore = PlayModeComponentChangesStore.LoadExisting();
+        if (compStore != null && compStore.changes.Count > 0)
+        {
+            foreach (var change in compStore.changes)
             {
-                var compSnaps = componentSnapshots[goKey];
+                var scene = EditorSceneManager.GetSceneByPath(change.scenePath);
+                if (!scene.IsValid())
+                    scene = EditorSceneManager.GetSceneByName(change.scenePath);
 
-                foreach (var comp in go.GetComponents<Component>())
+                if (!scene.IsValid())
+                    continue;
+
+                GameObject go = FindInSceneByPath(scene, change.objectPath);
+                if (go == null)
+                    continue;
+
+                var type = System.Type.GetType(change.componentType);
+                if (type == null)
+                    continue;
+
+                var allComps = go.GetComponents(type);
+                if (change.componentIndex < 0 || change.componentIndex >= allComps.Length)
+                    continue;
+
+                var comp = allComps[change.componentIndex];
+                if (comp == null)
+                    continue;
+
+                SerializedObject so = new SerializedObject(comp);
+                Undo.RecordObject(comp, "Apply Play Mode Component Changes");
+
+                for (int i = 0; i < change.propertyPaths.Count; i++)
                 {
-                    if (comp == null || comp is Transform) continue;
+                    string path = change.propertyPaths[i];
+                    string value = change.serializedValues[i];
+                    string typeName = change.valueTypes[i];
 
-                    string compKey = GetComponentKey(comp);
-                    if (!compSnaps.ContainsKey(compKey)) continue;
+                    SerializedProperty prop = so.FindProperty(path);
+                    if (prop == null)
+                        continue;
 
-                    // Component has snapshot, so it was changed
-                    // The current values in play mode are what we want to keep
-                    Undo.RecordObject(comp, "Apply Play Mode Component Changes");
-                    EditorUtility.SetDirty(comp);
+                    ApplySerializedComponentValue(prop, typeName, value);
+                }
+
+                so.ApplyModifiedProperties();
+                EditorUtility.SetDirty(comp);
+                if (scene.IsValid())
+                {
+                    EditorSceneManager.MarkSceneDirty(scene);
                 }
             }
         }
 
+        AssetDatabase.SaveAssets();
+    }
+
+    private static void ApplySerializedComponentValue(SerializedProperty prop, string typeName, string value)
+    {
+        switch (typeName)
+        {
+            case "Integer":
+                if (int.TryParse(value, out var iVal)) prop.intValue = iVal; break;
+            case "Boolean":
+                if (bool.TryParse(value, out var bVal)) prop.boolValue = bVal; break;
+            case "Float":
+                if (float.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var fVal)) prop.floatValue = fVal; break;
+            case "String":
+                prop.stringValue = value; break;
+            case "Color":
+                Color col; if (ColorUtility.TryParseHtmlString(value, out col)) prop.colorValue = col; break;
+            case "Vector2":
+                prop.vector2Value = DeserializeVector2(value); break;
+            case "Vector3":
+                prop.vector3Value = DeserializeVector3(value); break;
+            case "Vector4":
+                prop.vector4Value = DeserializeVector4(value); break;
+            case "Quaternion":
+                prop.quaternionValue = DeserializeQuaternion(value); break;
+            case "Enum":
+                if (int.TryParse(value, out var eVal)) prop.enumValueIndex = eVal; break;
+        }
+    }
+
+    // Nimmt die aktuellen Transform-Werte eines GameObjects an (Apply/Apply All im Play Mode):
+    // 1) Baseline-Snapshot wird auf den aktuellen Zustand gesetzt, damit das Objekt aus der
+    //    Changed-Liste verschwindet.
+    // 2) Die aktuellen Werte werden in den ScriptableObject-Store geschrieben, um sie beim
+    //    Verlassen des Play Modes im Edit Mode zu übernehmen.
+    // 3) Zusätzlich werden die ursprünglichen Werte (vor dem ersten Accept) mitgespeichert,
+    //    damit der Browser im Edit Mode diese als "Original" anzeigen kann.
+    public static void AcceptTransformChanges(GameObject go)
+    {
+        if (go == null)
+            return;
+
+        // Ursprünglichen Snapshot sichern, bevor wir die Baseline verschieben.
+        TransformSnapshot original = GetSnapshot(go);
+        TransformSnapshot current = new TransformSnapshot(go);
+
+        // Baseline verschieben: aktueller Zustand wird neuer Snapshot.
+        SetSnapshot(go, current);
+
+        // Persistente Speicherung im ScriptableObject (inkl. Originalwerte).
+        RecordTransformChangeToStore(go, original, current);
+    }
+
+    private static void RecordTransformChangeToStore(GameObject go, TransformSnapshot original, TransformSnapshot current)
+    {
+        var store = PlayModeTransformChangesStore.LoadOrCreate();
+
+        string scenePath = go.scene.path;
+        string objectPath = GetGameObjectPath(go.transform);
+
+        List<string> modifiedProps;
+        if (original != null)
+        {
+            modifiedProps = GetChangedProperties(original, current);
+        }
+        else
+        {
+            // Falls kein Original-Snapshot existiert, alle Eigenschaften als geändert markieren.
+            modifiedProps = new List<string> { "position", "rotation", "scale" };
+            if (current.isRectTransform)
+            {
+                modifiedProps.AddRange(new[]
+                {
+                    "anchoredPosition", "anchoredPosition3D", "anchorMin", "anchorMax",
+                    "pivot", "sizeDelta", "offsetMin", "offsetMax"
+                });
+            }
+        }
+
+        // Existierenden Eintrag für dieses Objekt suchen.
+        var existingIndex = store.changes.FindIndex(c => c.scenePath == scenePath && c.objectPath == objectPath);
+
+        // Originalwerte bestimmen:
+        // - Wenn bereits ein Eintrag mit Originalwerten existiert, diesen beibehalten.
+        // - Andernfalls Original aus dem übergebenen Snapshot ableiten (falls vorhanden).
+        bool hasOriginal = false;
+        Vector3 originalPosition = Vector3.zero;
+        Quaternion originalRotation = Quaternion.identity;
+        Vector3 originalScale = Vector3.one;
+        Vector2 originalAnchoredPosition = Vector2.zero;
+        Vector3 originalAnchoredPosition3D = Vector3.zero;
+        Vector2 originalAnchorMin = Vector2.zero;
+        Vector2 originalAnchorMax = Vector2.one;
+        Vector2 originalPivot = new Vector2(0.5f, 0.5f);
+        Vector2 originalSizeDelta = Vector2.zero;
+        Vector2 originalOffsetMin = Vector2.zero;
+        Vector2 originalOffsetMax = Vector2.zero;
+
+        if (existingIndex >= 0 && store.changes[existingIndex].hasOriginalValues)
+        {
+            var existing = store.changes[existingIndex];
+            hasOriginal = true;
+            originalPosition = existing.originalPosition;
+            originalRotation = existing.originalRotation;
+            originalScale = existing.originalScale;
+            originalAnchoredPosition = existing.originalAnchoredPosition;
+            originalAnchoredPosition3D = existing.originalAnchoredPosition3D;
+            originalAnchorMin = existing.originalAnchorMin;
+            originalAnchorMax = existing.originalAnchorMax;
+            originalPivot = existing.originalPivot;
+            originalSizeDelta = existing.originalSizeDelta;
+            originalOffsetMin = existing.originalOffsetMin;
+            originalOffsetMax = existing.originalOffsetMax;
+        }
+        else if (original != null)
+        {
+            hasOriginal = true;
+            originalPosition = original.position;
+            originalRotation = original.rotation;
+            originalScale = original.scale;
+
+            if (original.isRectTransform)
+            {
+                originalAnchoredPosition = original.anchoredPosition;
+                originalAnchoredPosition3D = original.anchoredPosition3D;
+                originalAnchorMin = original.anchorMin;
+                originalAnchorMax = original.anchorMax;
+                originalPivot = original.pivot;
+                originalSizeDelta = original.sizeDelta;
+                originalOffsetMin = original.offsetMin;
+                originalOffsetMax = original.offsetMax;
+            }
+        }
+
+        var change = new PlayModeTransformChangesStore.TransformChange
+        {
+            scenePath = scenePath,
+            objectPath = objectPath,
+            isRectTransform = current.isRectTransform,
+            position = current.position,
+            rotation = current.rotation,
+            scale = current.scale,
+            anchoredPosition = current.anchoredPosition,
+            anchoredPosition3D = current.anchoredPosition3D,
+            anchorMin = current.anchorMin,
+            anchorMax = current.anchorMax,
+            pivot = current.pivot,
+            sizeDelta = current.sizeDelta,
+            offsetMin = current.offsetMin,
+            offsetMax = current.offsetMax,
+            modifiedProperties = modifiedProps,
+            hasOriginalValues = hasOriginal,
+            originalPosition = originalPosition,
+            originalRotation = originalRotation,
+            originalScale = originalScale,
+            originalAnchoredPosition = originalAnchoredPosition,
+            originalAnchoredPosition3D = originalAnchoredPosition3D,
+            originalAnchorMin = originalAnchorMin,
+            originalAnchorMax = originalAnchorMax,
+            originalPivot = originalPivot,
+            originalSizeDelta = originalSizeDelta,
+            originalOffsetMin = originalOffsetMin,
+            originalOffsetMax = originalOffsetMax
+        };
+
+        if (existingIndex >= 0)
+        {
+            store.changes[existingIndex] = change;
+        }
+        else
+        {
+            store.changes.Add(change);
+        }
+
+        EditorUtility.SetDirty(store);
         AssetDatabase.SaveAssets();
     }
 
