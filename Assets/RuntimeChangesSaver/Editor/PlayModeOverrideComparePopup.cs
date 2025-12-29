@@ -2,8 +2,6 @@
 using UnityEditor;
 using UnityEngine;
 
-
-
 internal class PlayModeOverrideComparePopup : PopupWindowContent
 {
     private readonly Component liveComponent;
@@ -13,9 +11,14 @@ internal class PlayModeOverrideComparePopup : PopupWindowContent
     private Editor rightEditor;
     private Vector2 leftScroll;
     private Vector2 rightScroll;
+
     private const float MinWidth = 350f;
     private const float HeaderHeight = 24f;
     private const float FooterHeight = 40f;
+    private float cachedHeight = -1f;
+    private bool isDragging;
+    private Vector2 dragStartMouse;
+    private Rect dragStartWindow;
 
     public PlayModeOverrideComparePopup(Component component)
     {
@@ -453,9 +456,37 @@ internal class PlayModeOverrideComparePopup : PopupWindowContent
         return new Quaternion(x, y, z, w);
     }
 
+    private float EstimateInspectorHeight()
+    {
+        if (rightEditor == null || rightEditor.target == null)
+            return 300f;
+
+        SerializedObject so = new SerializedObject(rightEditor.target);
+        SerializedProperty prop = so.GetIterator();
+
+        int lineCount = 0;
+        bool enterChildren = true;
+        while (prop.NextVisible(enterChildren))
+        {
+            enterChildren = false;
+            if (prop.name == "m_Script")
+                continue;
+            lineCount++;
+        }
+
+        float lineHeight = EditorGUIUtility.singleLineHeight + 4f;
+        float estimated = lineCount * lineHeight + HeaderHeight + 20f;
+        return Mathf.Clamp(estimated, 200f, 800f);
+    }
+
     public override Vector2 GetWindowSize()
     {
-        return new Vector2(MinWidth * 2 + 6, 500 + FooterHeight);
+        if (cachedHeight < 0f)
+        {
+            cachedHeight = EstimateInspectorHeight();
+        }
+
+        return new Vector2(MinWidth * 2 + 6, cachedHeight + FooterHeight);
     }
 
     public override void OnGUI(Rect rect)
@@ -473,11 +504,55 @@ internal class PlayModeOverrideComparePopup : PopupWindowContent
         Rect rightColumn = new Rect(rect.x + columnWidth + 6, rect.y, columnWidth, contentHeight);
         Rect footerRect = new Rect(rect.x, rect.y + contentHeight, rect.width, FooterHeight);
 
+        HandleWindowDragging(rect);
+
         DrawColumn(leftColumn, leftEditor, ref leftScroll, "Original", false);
         DrawSeparator(new Rect(rect.x + columnWidth, rect.y, 6, contentHeight));
         DrawColumn(rightColumn, rightEditor, ref rightScroll, "Play Mode", true);
 
         DrawFooter(footerRect);
+    }
+
+    void HandleWindowDragging(Rect windowRect)
+    {
+        if (editorWindow == null)
+            return;
+
+        Rect dragRect = new Rect(windowRect.x, windowRect.y, windowRect.width, HeaderHeight);
+        Event e = Event.current;
+
+        switch (e.type)
+        {
+            case EventType.MouseDown:
+                if (e.button == 0 && dragRect.Contains(e.mousePosition))
+                {
+                    isDragging = true;
+                    dragStartMouse = GUIUtility.GUIToScreenPoint(e.mousePosition);
+                    dragStartWindow = editorWindow.position;
+                    e.Use();
+                }
+                break;
+
+            case EventType.MouseDrag:
+                if (isDragging)
+                {
+                    Vector2 current = GUIUtility.GUIToScreenPoint(e.mousePosition);
+                    Vector2 delta = current - dragStartMouse;
+                    Rect pos = dragStartWindow;
+                    pos.position += delta;
+                    editorWindow.position = pos;
+                    e.Use();
+                }
+                break;
+
+            case EventType.MouseUp:
+                if (isDragging && e.button == 0)
+                {
+                    isDragging = false;
+                    e.Use();
+                }
+                break;
+        }
     }
 
     void DrawColumn(Rect columnRect, Editor editor, ref Vector2 scroll, string title, bool editable)
@@ -496,7 +571,8 @@ internal class PlayModeOverrideComparePopup : PopupWindowContent
 
         GUI.BeginGroup(contentRect);
 
-        Rect viewRect = new Rect(0, 0, contentRect.width - 16, 2000);
+        Rect viewRect = new Rect(0, 0, contentRect.width - 16, contentRect.height);
+
         scroll = GUI.BeginScrollView(
             new Rect(0, 0, contentRect.width, contentRect.height),
             scroll,
@@ -575,7 +651,7 @@ internal class PlayModeOverrideComparePopup : PopupWindowContent
                 ? new Color(0.15f, 0.15f, 0.15f)
                 : new Color(0.6f, 0.6f, 0.6f);
             EditorGUI.DrawRect(rect, separatorColor);
-        }
+        } 
     }
 
     void DrawFooter(Rect rect)

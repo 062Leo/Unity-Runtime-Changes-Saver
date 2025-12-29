@@ -387,10 +387,10 @@ public class PlayModeOverridesBrowserWindow : EditorWindow
                     GUILayout.Space(10);
                     if (GUILayout.Button(comp.GetType().Name, EditorStyles.linkLabel))
                     {
-                        // Popup neben der Mausposition öffnen
-                        Vector2 mousePos = Event.current.mousePosition;
-                        Rect rect = new Rect(mousePos.x, mousePos.y, 400, 400);
-                        PopupWindow.Show(rect, new PlayModeOverrideComparePopup(comp));
+                        // Popup immer direkt unterhalb der Button-Zeile öffnen
+                        Rect buttonRect = GUILayoutUtility.GetLastRect();
+                        Rect popupRect = new Rect(buttonRect.x, buttonRect.yMax, buttonRect.width, 0f);
+                        PopupWindow.Show(popupRect, new PlayModeOverrideComparePopup(comp));
                     }
                     EditorGUILayout.ObjectField(comp, typeof(Component), true);
                     EditorGUILayout.EndHorizontal();
