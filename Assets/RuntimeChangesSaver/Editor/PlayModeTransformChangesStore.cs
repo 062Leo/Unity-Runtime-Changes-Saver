@@ -1,14 +1,15 @@
-﻿using UnityEngine;
-using UnityEditor;
+using System;
 using System.Collections.Generic;
 using System.IO;
+using UnityEditor;
+using UnityEngine;
 
-/// <summary>
-/// Speichert Transform/RectTransform-Änderungen zwischen Play Mode und Edit Mode.
-/// </summary>
+
+
+
 public class PlayModeTransformChangesStore : ScriptableObject
 {
-    [System.Serializable]
+    [Serializable]
     public class TransformChange
     {
         public string scenePath;
@@ -35,12 +36,13 @@ public class PlayModeTransformChangesStore : ScriptableObject
 
     public static PlayModeTransformChangesStore LoadExisting()
     {
-        // Versuche, ein bereits existierendes Asset des Typs zu finden – egal wo es liegt.
         string[] guids = AssetDatabase.FindAssets("t:PlayModeTransformChangesStore");
         if (guids != null && guids.Length > 0)
         {
             string path = AssetDatabase.GUIDToAssetPath(guids[0]);
-            return AssetDatabase.LoadAssetAtPath<PlayModeTransformChangesStore>(path);
+            var store = AssetDatabase.LoadAssetAtPath<PlayModeTransformChangesStore>(path);
+            Debug.Log($"[TransformDebug][Store.LoadExisting] Found existing store at '{path}', changeCount={store.changes.Count}");
+            return store;
         }
 
         return null;
@@ -52,28 +54,30 @@ public class PlayModeTransformChangesStore : ScriptableObject
         if (store == null)
         {
             string assetPath = GetDefaultAssetPath();
-            store = ScriptableObject.CreateInstance<PlayModeTransformChangesStore>();
+            store = CreateInstance<PlayModeTransformChangesStore>();
             AssetDatabase.CreateAsset(store, assetPath);
             AssetDatabase.SaveAssets();
+        }
+        else
+        {
+            string existingPath = AssetDatabase.GetAssetPath(store);
+            Debug.Log($"[TransformDebug][Store.LoadOrCreate] Using existing store at '{existingPath}', changeCount={store.changes.Count}");
         }
         return store;
     }
 
     private static string GetDefaultAssetPath()
     {
-        // Standardpfad: gleiche Ordnerstruktur wie das Skript selbst,
-        // damit ein verschobenes UnityPackage weiterhin funktioniert.
-        var tempInstance = ScriptableObject.CreateInstance<PlayModeTransformChangesStore>();
+        var tempInstance = CreateInstance<PlayModeTransformChangesStore>();
         MonoScript script = MonoScript.FromScriptableObject(tempInstance);
         string scriptPath = AssetDatabase.GetAssetPath(script);
-        ScriptableObject.DestroyImmediate(tempInstance);
+        DestroyImmediate(tempInstance);
 
         string directory = string.IsNullOrEmpty(scriptPath)
             ? "Assets"
             : Path.GetDirectoryName(scriptPath);
 
         string assetPath = Path.Combine(directory, "PlayModeTransformChangesStore.asset");
-        // Unity erwartet Vorwärts-Slashes.
         return assetPath.Replace("\\", "/");
     }
 
@@ -81,5 +85,6 @@ public class PlayModeTransformChangesStore : ScriptableObject
     {
         changes.Clear();
         EditorUtility.SetDirty(this);
+        Debug.Log("[TransformDebug][Store.Clear] Cleared all stored transform changes");
     }
 }
