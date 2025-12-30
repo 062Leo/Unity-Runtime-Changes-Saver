@@ -1,3 +1,4 @@
+using System.Linq;
 using UnityEditor;
 using UnityEngine;
 
@@ -36,16 +37,7 @@ namespace RuntimeChangesSaver.Editor
             var changedComponents = ChangesTracker.GetChangedComponents(go);
             bool hasChanges = changedComponents.Count > 0;
 
-            bool hasTransformChange = false;
-            foreach (var t in changedComponents)
-            {
-                // ReSharper disable once ConditionIsAlwaysTrueOrFalse
-                if (t is Transform or RectTransform)
-                {
-                    hasTransformChange = true;
-                    break;
-                }
-            }
+            bool hasTransformChange = changedComponents.Any(t => t is Transform or RectTransform);
 
             Debug.Log($"[TransformDebug][Inspector.Header] GO='{go.name}', changedCount={changedComponents.Count}, hasTransform={hasTransformChange}");
 

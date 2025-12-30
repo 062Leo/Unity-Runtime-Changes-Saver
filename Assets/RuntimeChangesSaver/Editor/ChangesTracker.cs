@@ -43,16 +43,12 @@ namespace RuntimeChangesSaver.Editor
         private static void OnEditorUpdate()
         {
             // Check if we need to capture on first play mode frame
-            if (Application.isPlaying && snapshots.Count == 0)
-            {
-                bool needsCapture = EditorPrefs.GetBool(PREFS_KEY, false);
-                if (needsCapture)
-                {
-                    EditorPrefs.DeleteKey(PREFS_KEY);
-                    // Wait one frame for scene to be ready
-                    EditorApplication.delayCall += CaptureSnapshotsInPlayMode;
-                }
-            }
+            if (!Application.isPlaying || snapshots.Count != 0) return;
+            bool needsCapture = EditorPrefs.GetBool(PREFS_KEY, false);
+            if (!needsCapture) return;
+            EditorPrefs.DeleteKey(PREFS_KEY);
+            // Wait one frame for scene to be ready
+            EditorApplication.delayCall += CaptureSnapshotsInPlayMode;
         }
 
         private static void OnPlayModeStateChanged(PlayModeStateChange state)
