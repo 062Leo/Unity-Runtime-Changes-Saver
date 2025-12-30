@@ -369,6 +369,9 @@ namespace RuntimeChangesSaver.Editor
 
                 foreach (var entry in entries)
                 {
+                    if (entry.GameObject == null)
+                        continue;
+
                     EditorGUILayout.BeginHorizontal();
                     entry.Expanded = EditorGUILayout.Foldout(entry.Expanded, entry.GameObject.name, true);
                     EditorGUILayout.ObjectField(entry.GameObject, typeof(GameObject), true);

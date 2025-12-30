@@ -38,6 +38,7 @@ namespace RuntimeChangesSaver.Editor
         {
             EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
             EditorApplication.update += OnEditorUpdate;
+            SceneManager.sceneLoaded += OnSceneLoaded;
         }
 
         private static void OnEditorUpdate()
@@ -87,6 +88,120 @@ namespace RuntimeChangesSaver.Editor
                     EditorPrefs.DeleteKey(PREFS_KEY);
                     ApplyChangesFromStoreToEditMode();
                     break;
+            }
+        }
+
+        private static void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+        {
+            if (!Application.isPlaying)
+                return;
+
+            if (!scene.isLoaded)
+                return;
+
+            ApplyRuntimeOverridesForScene(scene);
+
+            GameObject[] roots = scene.GetRootGameObjects();
+            foreach (GameObject rootGO in roots)
+            {
+                CaptureGameObjectRecursive(rootGO);
+            }
+        }
+
+        private static void ApplyRuntimeOverridesForScene(Scene scene)
+        {
+            var transformStore = TransformChangesStore.LoadExisting();
+            if (transformStore != null && transformStore.changes.Count > 0)
+            {
+                foreach (var change in transformStore.changes)
+                {
+                    var changeScene = SceneManager.GetSceneByPath(change.scenePath);
+                    if (!changeScene.IsValid())
+                        changeScene = SceneManager.GetSceneByName(change.scenePath);
+
+                    if (!changeScene.IsValid() || changeScene != scene)
+                        continue;
+
+                    GameObject go = FindInSceneByPath(scene, change.objectPath);
+                    if (go == null)
+                        continue;
+
+                    Transform t = go.transform;
+                    RectTransform rt = t as RectTransform;
+
+                    if (change.modifiedProperties is { Count: > 0 })
+                    {
+                        foreach (var prop in change.modifiedProperties)
+                        {
+                            ApplyPropertyToTransform(t, rt, change, prop);
+                        }
+                    }
+                    else
+                    {
+                        t.localPosition = change.position;
+                        t.localRotation = change.rotation;
+                        t.localScale = change.scale;
+
+                        if (rt != null && change.isRectTransform)
+                        {
+                            rt.anchoredPosition = change.anchoredPosition;
+                            rt.anchoredPosition3D = change.anchoredPosition3D;
+                            rt.anchorMin = change.anchorMin;
+                            rt.anchorMax = change.anchorMax;
+                            rt.pivot = change.pivot;
+                            rt.sizeDelta = change.sizeDelta;
+                            rt.offsetMin = change.offsetMin;
+                            rt.offsetMax = change.offsetMax;
+                        }
+                    }
+                }
+            }
+
+            var compStore = ComponentChangesStore.LoadExisting();
+            if (compStore != null && compStore.changes.Count > 0)
+            {
+                foreach (var change in compStore.changes)
+                {
+                    var changeScene = SceneManager.GetSceneByPath(change.scenePath);
+                    if (!changeScene.IsValid())
+                        changeScene = SceneManager.GetSceneByName(change.scenePath);
+
+                    if (!changeScene.IsValid() || changeScene != scene)
+                        continue;
+
+                    GameObject go = FindInSceneByPath(scene, change.objectPath);
+                    if (go == null)
+                        continue;
+
+                    var type = Type.GetType(change.componentType);
+                    if (type == null)
+                        continue;
+
+                    var allComps = go.GetComponents(type);
+                    if (change.componentIndex < 0 || change.componentIndex >= allComps.Length)
+                        continue;
+
+                    var comp = allComps[change.componentIndex];
+                    if (comp == null)
+                        continue;
+
+                    SerializedObject so = new SerializedObject(comp);
+
+                    for (int i = 0; i < change.propertyPaths.Count; i++)
+                    {
+                        string path = change.propertyPaths[i];
+                        string value = change.serializedValues[i];
+                        string typeName = change.valueTypes[i];
+
+                        SerializedProperty prop = so.FindProperty(path);
+                        if (prop == null)
+                            continue;
+
+                        ApplySerializedComponentValue(prop, typeName, value);
+                    }
+
+                    so.ApplyModifiedPropertiesWithoutUndo();
+                }
             }
         }
 
