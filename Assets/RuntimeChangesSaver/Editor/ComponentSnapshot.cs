@@ -1,14 +1,12 @@
 using System;
 using System.Collections.Generic;
-using UnityEditor;
-using UnityEngine;
-using UnityEngine.SceneManagement;
 
-
-
-[Serializable]
-public class ComponentSnapshot
+namespace RuntimeChangesSaver.Editor
 {
-    public string componentType; 
-    public Dictionary<string, object> properties = new Dictionary<string, object>();
+    [Serializable]
+    public class ComponentSnapshot
+    {
+        public string componentType; 
+        public Dictionary<string, object> properties = new Dictionary<string, object>();
+    }
 }
