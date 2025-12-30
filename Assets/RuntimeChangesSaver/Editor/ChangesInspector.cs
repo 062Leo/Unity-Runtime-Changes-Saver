@@ -1,66 +1,69 @@
-
 using UnityEditor;
 using UnityEngine;
 
-[InitializeOnLoad]
-public class ChangesInspector
+namespace RuntimeChangesSaver.Editor
 {
-    static ChangesInspector()
+    [InitializeOnLoad]
+    public class ChangesInspector
     {
-        Editor.finishedDefaultHeaderGUI += OnPostHeaderGUI;
-    }
-
-    private static void OnPostHeaderGUI(Editor editor)
-    {
-        if (!Application.isPlaying)
-            return;
-
-        if (editor == null || editor.target == null)
-            return;
-
-        GameObject go = editor.target as GameObject;
-        if (go == null)
+        static ChangesInspector()
         {
-            var comp = editor.target as Component;
-            if (comp != null)
-            {
-                go = comp.gameObject;
-            }
+            UnityEditor.Editor.finishedDefaultHeaderGUI += OnPostHeaderGUI;
         }
 
-        if (go == null)
-            return;
-
-        // Check if any component has changes
-        var changedComponents = ChangesTracker.GetChangedComponents(go);
-        bool hasChanges = changedComponents.Count > 0;
-
-        bool hasTransformChange = false;
-        for (int i = 0; i < changedComponents.Count; i++)
+        private static void OnPostHeaderGUI(UnityEditor.Editor editor)
         {
-            if (changedComponents[i] is Transform || changedComponents[i] is RectTransform)
+            if (!Application.isPlaying)
+                return;
+
+            if (editor == null || editor.target == null)
+                return;
+
+            GameObject go = editor.target as GameObject;
+            if (go == null)
             {
-                hasTransformChange = true;
-                break;
+                var comp = editor.target as Component;
+                if (comp != null)
+                {
+                    go = comp.gameObject;
+                }
             }
-        }
 
-        Debug.Log($"[TransformDebug][Inspector.Header] GO='{go.name}', changedCount={changedComponents.Count}, hasTransform={hasTransformChange}");
+            if (go == null)
+                return;
 
-        EditorGUILayout.BeginHorizontal(EditorStyles.helpBox);
+            // Check if any component has changes
+            var changedComponents = ChangesTracker.GetChangedComponents(go);
+            bool hasChanges = changedComponents.Count > 0;
 
-        using (new EditorGUI.DisabledScope(!hasChanges))
-        {
-            GUIContent buttonContent = new GUIContent("Play Mode Overrides");
-            Rect buttonRect = GUILayoutUtility.GetRect(buttonContent, EditorStyles.miniButton, GUILayout.Width(140f));
-            if (GUI.Button(buttonRect, buttonContent, EditorStyles.miniButton))
+            bool hasTransformChange = false;
+            foreach (var t in changedComponents)
             {
-                PopupWindow.Show(buttonRect, new OverridesWindow(go));
+                // ReSharper disable once ConditionIsAlwaysTrueOrFalse
+                if (t is Transform || t is RectTransform)
+                {
+                    hasTransformChange = true;
+                    break;
+                }
             }
-        }
 
-        GUILayout.FlexibleSpace();
-        EditorGUILayout.EndHorizontal();
-        EditorGUILayout.Space(2);
+            Debug.Log($"[TransformDebug][Inspector.Header] GO='{go.name}', changedCount={changedComponents.Count}, hasTransform={hasTransformChange}");
+
+            EditorGUILayout.BeginHorizontal(EditorStyles.helpBox);
+
+            using (new EditorGUI.DisabledScope(!hasChanges))
+            {
+                GUIContent buttonContent = new GUIContent("Play Mode Overrides");
+                Rect buttonRect = GUILayoutUtility.GetRect(buttonContent, EditorStyles.miniButton, GUILayout.Width(140f));
+                if (GUI.Button(buttonRect, buttonContent, EditorStyles.miniButton))
+                {
+                    PopupWindow.Show(buttonRect, new OverridesWindow(go));
+                }
+            }
+
+            GUILayout.FlexibleSpace();
+            EditorGUILayout.EndHorizontal();
+            EditorGUILayout.Space(2);
+        }
     }
 }
