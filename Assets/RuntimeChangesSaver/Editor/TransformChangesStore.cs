@@ -48,7 +48,7 @@ public class TransformChangesStore : ScriptableObject
 
     public static TransformChangesStore LoadExisting()
     {
-        string[] guids = AssetDatabase.FindAssets("t:PlayModeTransformChangesStore");
+        string[] guids = AssetDatabase.FindAssets("t:TransformChangesStore");
         if (guids != null && guids.Length > 0)
         {
             string path = AssetDatabase.GUIDToAssetPath(guids[0]);
@@ -83,7 +83,8 @@ public class TransformChangesStore : ScriptableObject
         // Versuche, den Speicherort dieses Skripts zu finden und von dort
         // zum Ordner "RuntimeChangesSaver" hochzulaufen, egal wo er unterhalb
         // von Assets einsortiert ist.
-        string[] scriptGuids = AssetDatabase.FindAssets("PlayModeTransformChangesStore t:Script");
+        string[] scriptGuids = AssetDatabase.FindAssets("TransformChangesStore t:Script");
+
         if (scriptGuids != null && scriptGuids.Length > 0)
         {
             string scriptPath = AssetDatabase.GUIDToAssetPath(scriptGuids[0]);
@@ -130,7 +131,7 @@ public class TransformChangesStore : ScriptableObject
             AssetDatabase.CreateFolder(runtimeFolder, "Scriptable_Objects");
         }
 
-        string assetPath = Path.Combine(soFolder, "PlayModeTransformChangesStore.asset");
+        string assetPath = Path.Combine(soFolder, "TransformChangesStore.asset");
         return assetPath.Replace("\\", "/");
     }
 

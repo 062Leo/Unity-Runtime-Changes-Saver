@@ -28,7 +28,7 @@ public class ComponentChangesStore : ScriptableObject
 
     public static ComponentChangesStore LoadExisting()
     {
-        string[] guids = AssetDatabase.FindAssets("t:PlayModeComponentChangesStore");
+        string[] guids = AssetDatabase.FindAssets($"t:{nameof(ComponentChangesStore)}");
         if (guids != null && guids.Length > 0)
         {
             string path = AssetDatabase.GUIDToAssetPath(guids[0]);
@@ -57,7 +57,7 @@ public class ComponentChangesStore : ScriptableObject
         // Versuche, den Speicherort dieses Skripts zu finden und von dort
         // zum Ordner "RuntimeChangesSaver" hochzulaufen, egal wo er unterhalb
         // von Assets einsortiert ist.
-        string[] scriptGuids = AssetDatabase.FindAssets("PlayModeComponentChangesStore t:Script");
+        string[] scriptGuids = AssetDatabase.FindAssets($"{nameof(ComponentChangesStore)} t:Script");
         if (scriptGuids != null && scriptGuids.Length > 0)
         {
             string scriptPath = AssetDatabase.GUIDToAssetPath(scriptGuids[0]);
@@ -104,7 +104,7 @@ public class ComponentChangesStore : ScriptableObject
             AssetDatabase.CreateFolder(runtimeFolder, "Scriptable_Objects");
         }
 
-        string assetPath = Path.Combine(soFolder, "PlayModeComponentChangesStore.asset");
+        string assetPath = Path.Combine(soFolder, "ComponentChangesStore.asset");
         return assetPath.Replace("\\", "/");
     }
 
