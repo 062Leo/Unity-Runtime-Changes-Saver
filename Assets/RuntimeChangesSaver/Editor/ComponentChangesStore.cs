@@ -31,7 +31,7 @@ namespace RuntimeChangesSaver.Editor
         public static ComponentChangesStore LoadExisting()
         {
             string[] guids = AssetDatabase.FindAssets($"t:{nameof(ComponentChangesStore)}");
-            if (guids != null && guids.Length > 0)
+            if (guids is { Length: > 0 })
             {
                 string path = AssetDatabase.GUIDToAssetPath(guids[0]);
                 return AssetDatabase.LoadAssetAtPath<ComponentChangesStore>(path);
@@ -60,7 +60,7 @@ namespace RuntimeChangesSaver.Editor
             // zum Ordner "RuntimeChangesSaver" hochzulaufen, egal wo er unterhalb
             // von Assets einsortiert ist.
             string[] scriptGuids = AssetDatabase.FindAssets($"{nameof(ComponentChangesStore)} t:Script");
-            if (scriptGuids != null && scriptGuids.Length > 0)
+            if (scriptGuids is { Length: > 0 })
             {
                 string scriptPath = AssetDatabase.GUIDToAssetPath(scriptGuids[0]);
                 if (!string.IsNullOrEmpty(scriptPath))
@@ -86,7 +86,7 @@ namespace RuntimeChangesSaver.Editor
 
                     // Fallback: wenn kein expliziter RuntimeChangesSaver-Ordner
                     // gefunden wurde, verwenden wir den Ordner, in dem das Skript liegt.
-                    return Path.GetDirectoryName(scriptPath).Replace("\\", "/");
+                    return Path.GetDirectoryName(scriptPath)?.Replace("\\", "/");
                 }
             }
 

@@ -31,8 +31,10 @@ namespace RuntimeChangesSaver.Editor
         {
             var go = liveComponent.gameObject;
             Debug.Log($"[TransformDebug][ComparePopup.Create] LiveComponent='{liveComponent.GetType().Name}', GO='{go.name}'");
-            snapshotGO = new GameObject("SnapshotTransform");
-            snapshotGO.hideFlags = HideFlags.HideAndDontSave;
+            snapshotGO = new GameObject("SnapshotTransform")
+            {
+                hideFlags = HideFlags.HideAndDontSave
+            };
 
             if (liveComponent is Transform)
             {
@@ -205,14 +207,12 @@ namespace RuntimeChangesSaver.Editor
                     {
                         SerializedObject so = new SerializedObject(snapshotComponent);
 
-                        var baseValues = (match.hasOriginalValues &&
-                                          match.originalSerializedValues != null &&
+                        var baseValues = (match is { hasOriginalValues: true, originalSerializedValues: not null } &&
                                           match.originalSerializedValues.Count == match.propertyPaths.Count)
                             ? match.originalSerializedValues
                             : match.serializedValues;
 
-                        var baseTypes = (match.hasOriginalValues &&
-                                         match.originalValueTypes != null &&
+                        var baseTypes = (match is { hasOriginalValues: true, originalValueTypes: not null } &&
                                          match.originalValueTypes.Count == match.propertyPaths.Count)
                             ? match.originalValueTypes
                             : match.valueTypes;
@@ -305,14 +305,12 @@ namespace RuntimeChangesSaver.Editor
 
                         // Wenn Originalwerte vorhanden und passend dimensioniert sind, diese verwenden,
                         // andernfalls auf die aktuell persistierten Werte zurückfallen.
-                        var baseValues = (match.hasOriginalValues &&
-                                          match.originalSerializedValues != null &&
+                        var baseValues = (match is { hasOriginalValues: true, originalSerializedValues: not null } &&
                                           match.originalSerializedValues.Count == match.propertyPaths.Count)
                             ? match.originalSerializedValues
                             : match.serializedValues;
 
-                        var baseTypes = (match.hasOriginalValues &&
-                                         match.originalValueTypes != null &&
+                        var baseTypes = (match is { hasOriginalValues: true, originalValueTypes: not null } &&
                                          match.originalValueTypes.Count == match.propertyPaths.Count)
                             ? match.originalValueTypes
                             : match.valueTypes;
@@ -394,7 +392,7 @@ namespace RuntimeChangesSaver.Editor
                     prop.stringValue = value;
                     break;
                 case "Color":
-                    Color col; if (ColorUtility.TryParseHtmlString(value, out col)) prop.colorValue = col;
+                    if (ColorUtility.TryParseHtmlString(value, out var col)) prop.colorValue = col;
                     break;
                 case "Vector2":
                     prop.vector2Value = DeserializeVector2ForPopup(value);
@@ -583,7 +581,7 @@ namespace RuntimeChangesSaver.Editor
             GUILayout.BeginArea(new Rect(4, 0, viewRect.width - 8, viewRect.height));
             // Spezialbehandlung für Transform/RectTransform, da der eingebaute TransformInspector
             // im Popup-Layout keine Werte anzeigt, obwohl sie korrekt im Objekt vorhanden sind.
-            if (editor != null && editor.target is Transform transformTarget)
+            if (editor is { target: Transform transformTarget })
             {
                 DrawTransformInspector(transformTarget, editable);
             }
@@ -673,7 +671,7 @@ namespace RuntimeChangesSaver.Editor
             {
                 // Transform-Änderungen für dieses GameObject annehmen und für
                 // den späteren Übergang in den Edit Mode persistieren.
-                if (liveComponent is Transform || liveComponent is RectTransform)
+                if (liveComponent is Transform or RectTransform)
                 {
                     ChangesTracker.AcceptTransformChanges(liveComponent.gameObject);
                 }
@@ -738,7 +736,7 @@ namespace RuntimeChangesSaver.Editor
             // GetChangedComponents sie nicht weiter als "geändert" meldet.
             if (Application.isPlaying && liveComponent != null)
             {
-                if (liveComponent is Transform || liveComponent is RectTransform)
+                if (liveComponent is Transform or RectTransform)
                 {
                     ChangesTracker.ResetTransformBaseline(liveComponent.gameObject);
                 }
@@ -759,7 +757,7 @@ namespace RuntimeChangesSaver.Editor
 
                 string objectPath = GetGameObjectPathForPopup(go.transform);
 
-                if (liveComponent is Transform || liveComponent is RectTransform)
+                if (liveComponent is Transform or RectTransform)
                 {
                     var tStore = TransformChangesStore.LoadExisting();
                     if (tStore != null)

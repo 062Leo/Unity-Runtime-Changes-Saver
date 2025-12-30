@@ -155,12 +155,7 @@ namespace RuntimeChangesSaver.Editor
             Component[] components = go.GetComponents<Component>();
             foreach (var comp in components)
             {
-                if (comp == null)
-                {
-                    continue;
-                }
-
-                if (comp is Transform)
+                if (comp is null or Transform)
                 {
                     continue;
                 }
@@ -318,7 +313,7 @@ namespace RuntimeChangesSaver.Editor
             // Check other components
             foreach (var comp in go.GetComponents<Component>())
             {
-                if (comp == null || comp is Transform) continue;
+                if (comp is null or Transform) continue;
 
                 string compKey = GetComponentKey(comp);
 

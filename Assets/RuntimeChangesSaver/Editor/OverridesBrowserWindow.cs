@@ -14,8 +14,8 @@ namespace RuntimeChangesSaver.Editor
             public bool Expanded = true;
         }
 
-        private Dictionary<Scene, List<GameObjectEntry>> _sceneEntries = new Dictionary<Scene, List<GameObjectEntry>>();
-        private Dictionary<Scene, bool> _sceneFoldouts = new Dictionary<Scene, bool>();
+        private readonly Dictionary<Scene, List<GameObjectEntry>> _sceneEntries = new Dictionary<Scene, List<GameObjectEntry>>();
+        private readonly Dictionary<Scene, bool> _sceneFoldouts = new Dictionary<Scene, bool>();
         private Vector2 _scroll;
 
         [MenuItem("Tools/Play Mode Overrides Browser")]
@@ -196,7 +196,7 @@ namespace RuntimeChangesSaver.Editor
         private void CollectChangedGameObjectsRecursive(GameObject go, List<GameObjectEntry> list)
         {
             var changed = ChangesTracker.GetChangedComponents(go);
-            if (changed != null && changed.Count > 0)
+            if (changed is { Count: > 0 })
             {
                 var entry = new GameObjectEntry
                 {
@@ -358,7 +358,7 @@ namespace RuntimeChangesSaver.Editor
                 Scene scene = kvp.Key;
                 List<GameObjectEntry> entries = kvp.Value;
 
-                bool expanded = _sceneFoldouts.TryGetValue(scene, out bool value) ? value : true;
+                bool expanded = _sceneFoldouts.GetValueOrDefault(scene, true);
                 expanded = EditorGUILayout.Foldout(expanded, scene.name, true);
                 _sceneFoldouts[scene] = expanded;
 

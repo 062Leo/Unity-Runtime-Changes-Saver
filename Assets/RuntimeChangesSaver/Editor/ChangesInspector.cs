@@ -40,7 +40,7 @@ namespace RuntimeChangesSaver.Editor
             foreach (var t in changedComponents)
             {
                 // ReSharper disable once ConditionIsAlwaysTrueOrFalse
-                if (t is Transform || t is RectTransform)
+                if (t is Transform or RectTransform)
                 {
                     hasTransformChange = true;
                     break;

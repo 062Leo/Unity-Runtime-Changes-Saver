@@ -32,6 +32,7 @@ namespace RuntimeChangesSaver.Editor
 
             if (isRectTransform)
             {
+                // ReSharper disable once PossibleNullReferenceException
                 anchoredPosition = rt.anchoredPosition;
                 anchoredPosition3D = rt.anchoredPosition3D;
                 anchorMin = rt.anchorMin;

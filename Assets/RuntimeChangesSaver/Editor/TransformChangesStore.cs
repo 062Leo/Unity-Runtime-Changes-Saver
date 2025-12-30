@@ -51,7 +51,7 @@ namespace RuntimeChangesSaver.Editor
         public static TransformChangesStore LoadExisting()
         {
             string[] guids = AssetDatabase.FindAssets("t:TransformChangesStore");
-            if (guids != null && guids.Length > 0)
+            if (guids is { Length: > 0 })
             {
                 string path = AssetDatabase.GUIDToAssetPath(guids[0]);
                 var store = AssetDatabase.LoadAssetAtPath<TransformChangesStore>(path);
@@ -87,12 +87,12 @@ namespace RuntimeChangesSaver.Editor
             // von Assets einsortiert ist.
             string[] scriptGuids = AssetDatabase.FindAssets("TransformChangesStore t:Script");
 
-            if (scriptGuids != null && scriptGuids.Length > 0)
+            if (scriptGuids is { Length: > 0 })
             {
                 string scriptPath = AssetDatabase.GUIDToAssetPath(scriptGuids[0]);
                 if (!string.IsNullOrEmpty(scriptPath))
                 {
-                    string dir = Path.GetDirectoryName(scriptPath).Replace("\\", "/");
+                    string dir = Path.GetDirectoryName(scriptPath)?.Replace("\\", "/");
 
                     // Vom Skript nach oben laufen, bis wir einen Ordner namens
                     // "RuntimeChangesSaver" finden oder Assets erreichen.
@@ -113,7 +113,7 @@ namespace RuntimeChangesSaver.Editor
 
                     // Fallback: wenn kein expliziter RuntimeChangesSaver-Ordner
                     // gefunden wurde, verwenden wir den Ordner, in dem das Skript liegt.
-                    return Path.GetDirectoryName(scriptPath).Replace("\\", "/");
+                    return Path.GetDirectoryName(scriptPath)?.Replace("\\", "/");
                 }
             }
 

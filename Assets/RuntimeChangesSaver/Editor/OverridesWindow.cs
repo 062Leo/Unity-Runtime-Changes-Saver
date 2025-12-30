@@ -182,7 +182,7 @@ namespace RuntimeChangesSaver.Editor
             foreach (var comp in changedComponents)
             {
                 // ReSharper disable once ConditionIsAlwaysTrueOrFalse
-                if (comp is Transform || comp is RectTransform)
+                if (comp is Transform or RectTransform)
                 {
                     hasTransformChange = true;
                     break;
@@ -197,7 +197,7 @@ namespace RuntimeChangesSaver.Editor
             // Nicht-Transform-Komponenten ebenfalls annehmen
             foreach (var comp in changedComponents)
             {
-                if (comp == null || comp is Transform)
+                if (comp is null or Transform)
                     continue;
 
                 ChangesTracker.AcceptComponentChanges(comp);
