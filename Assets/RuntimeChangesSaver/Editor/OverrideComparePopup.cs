@@ -1,4 +1,4 @@
-using UnityEditor;
+﻿using UnityEditor;
 using UnityEngine;
 
 namespace RuntimeChangesSaver.Editor
@@ -110,8 +110,9 @@ namespace RuntimeChangesSaver.Editor
                 }
                 else if (Application.isPlaying)
                 {
-                    // Kein Store-Eintrag vorhanden: Im Play Mode wie bisher über die
-                    // gespeicherten Snapshots arbeiten (Originalzustand vor den Änderungen).
+                    // No matching TransformChange entry in store
+                    // Stored snapshots usage in play mode as original state before changes
+
                     var originalSnapshot = ChangesTracker.GetSnapshot(go);
 
                     if (originalSnapshot != null)
@@ -120,7 +121,7 @@ namespace RuntimeChangesSaver.Editor
 
                         if (originalSnapshot.isRectTransform && liveComponent is RectTransform)
                         {
-                            // AddComponent<RectTransform> ersetzt das normale Transform automatisch
+                            // AddComponent<RectTransform> automatic replacement of normal Transform
                             snapshotComponent = snapshotGO.AddComponent<RectTransform>();
                         }
                         else
@@ -128,7 +129,7 @@ namespace RuntimeChangesSaver.Editor
                             snapshotComponent = snapshotGO.transform;
                         }
 
-                        // Werte vom Snapshot auf das Objekt übertragen
+                        // Values from snapshot applied to component
                         if (snapshotComponent is RectTransform snapshotRT)
                         {
                             snapshotRT.anchoredPosition = originalSnapshot.anchoredPosition;
@@ -139,8 +140,6 @@ namespace RuntimeChangesSaver.Editor
                             snapshotRT.sizeDelta = originalSnapshot.sizeDelta;
                             snapshotRT.offsetMin = originalSnapshot.offsetMin;
                             snapshotRT.offsetMax = originalSnapshot.offsetMax;
-
-                            Debug.Log($"[TransformDebug][ComparePopup.Create] Applied RectTransform data to snapshot GO='{snapshotGO.name}': anchoredPos={snapshotRT.anchoredPosition}, sizeDelta={snapshotRT.sizeDelta}, anchorMin={snapshotRT.anchorMin}, anchorMax={snapshotRT.anchorMax}");
                         }
 
                         snapshotComponent.transform.localPosition = originalSnapshot.position;
@@ -152,8 +151,6 @@ namespace RuntimeChangesSaver.Editor
 
                         SerializedObject so = new SerializedObject(snapshotComponent);
                         so.Update();
-
-                        
                     }
                     else
                     {
@@ -167,15 +164,16 @@ namespace RuntimeChangesSaver.Editor
             }
             else
             {
-                // For other components, create snapshot from stored data
+                // Snapshot creation for non-transform components based on stored data
 
                 var type = liveComponent.GetType();
                 snapshotComponent = snapshotGO.AddComponent(type);
 
                 if (Application.isPlaying)
                 {
-                    // Play Mode: zunächst versuchen wir – analog zu Transforms – einen passenden
-                    // Eintrag im Component-Store zu finden (für bereits akzeptierte Overrides).
+                    // Play mode lookup analogous to transforms
+                    // Matching entry search in ComponentChangesStore for already accepted overrides
+
                     ComponentChangesStore.ComponentChange match = null;
                     var compStore = ComponentChangesStore.LoadExisting();
 
@@ -241,7 +239,8 @@ namespace RuntimeChangesSaver.Editor
                     }
                     else
                     {
-                        // Fallback: wie bisher über den ComponentSnapshot arbeiten.
+                        // ComponentSnapshot usage fallback when no store entry found
+
                         string compKey = ChangesTracker.GetComponentKey(liveComponent);
                         var snapshot = ChangesTracker.GetComponentSnapshot(go, compKey);
 
@@ -271,7 +270,9 @@ namespace RuntimeChangesSaver.Editor
                 }
                 else
                 {
-                    // Edit Mode (z.B. Browser): Originalwerte aus dem Component-Store holen.
+                    // Edit mode usage (e.g. browser)
+                    // Original component values retrieval from ComponentChangesStore
+
                     var compStore = ComponentChangesStore.LoadExisting();
                     ComponentChangesStore.ComponentChange match = null;
 
@@ -303,8 +304,6 @@ namespace RuntimeChangesSaver.Editor
                     {
                         SerializedObject so = new SerializedObject(snapshotComponent);
 
-                        // Wenn Originalwerte vorhanden und passend dimensioniert sind, diese verwenden,
-                        // andernfalls auf die aktuell persistierten Werte zurückfallen.
                         var baseValues = (match is { hasOriginalValues: true, originalSerializedValues: not null } &&
                                           match.originalSerializedValues.Count == match.propertyPaths.Count)
                             ? match.originalSerializedValues
@@ -554,11 +553,13 @@ namespace RuntimeChangesSaver.Editor
 
         void DrawColumn(Rect columnRect, UnityEditor.Editor editor, ref Vector2 scroll, string title, bool editable)
         {
-            // Header
+            // Column header area
+
             Rect headerRect = new Rect(columnRect.x, columnRect.y, columnRect.width, HeaderHeight);
             DrawColumnHeader(headerRect, editor.target, title);
 
-            // Content area with scroll
+            // Scrollable content area for inspector
+
             Rect contentRect = new Rect(
                 columnRect.x,
                 columnRect.y + HeaderHeight,
@@ -579,8 +580,9 @@ namespace RuntimeChangesSaver.Editor
             GUI.enabled = editable;
 
             GUILayout.BeginArea(new Rect(4, 0, viewRect.width - 8, viewRect.height));
-            // Spezialbehandlung für Transform/RectTransform, da der eingebaute TransformInspector
-            // im Popup-Layout keine Werte anzeigt, obwohl sie korrekt im Objekt vorhanden sind.
+            // Special handling for Transform and RectTransform editors
+            // Built-in TransformInspector shows no values in popup layout despite correct object data
+
             if (editor is { target: Transform transformTarget })
             {
                 DrawTransformInspector(transformTarget, editable);
@@ -669,8 +671,7 @@ namespace RuntimeChangesSaver.Editor
 
             if (GUILayout.Button("Apply", GUILayout.Width(120f), GUILayout.Height(28f)))
             {
-                // Transform-Änderungen für dieses GameObject annehmen und für
-                // den späteren Übergang in den Edit Mode persistieren.
+                // Transform changes acceptance for this GameObject and persistence for later transition to Edit Mode.
                 if (liveComponent is Transform or RectTransform)
                 {
                     ChangesTracker.AcceptTransformChanges(liveComponent.gameObject);
@@ -710,7 +711,7 @@ namespace RuntimeChangesSaver.Editor
         {
             if (snapshotComponent == null) return;
 
-            // Copy all values from snapshot to live component
+            // Copy of all values from snapshot to live component
             SerializedObject sourceSO = new SerializedObject(snapshotComponent);
             SerializedObject targetSO = new SerializedObject(liveComponent);
 

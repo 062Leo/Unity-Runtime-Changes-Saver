@@ -1,4 +1,4 @@
-using System.Linq;
+﻿using System.Linq;
 using UnityEditor;
 using UnityEngine;
 
@@ -33,7 +33,7 @@ namespace RuntimeChangesSaver.Editor
             if (go == null)
                 return;
 
-            // Check if any component has changes
+            // changed components presence check
             var changedComponents = ChangesTracker.GetChangedComponents(go);
             bool hasChanges = changedComponents.Count > 0;
 

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -42,12 +42,12 @@ namespace RuntimeChangesSaver.Editor
 
         private static void OnEditorUpdate()
         {
-            // Check if we need to capture on first play mode frame
+            // capture requirement check for first play mode frame
             if (!Application.isPlaying || snapshots.Count != 0) return;
             bool needsCapture = EditorPrefs.GetBool(PREFS_KEY, false);
             if (!needsCapture) return;
             EditorPrefs.DeleteKey(PREFS_KEY);
-            // Wait one frame for scene to be ready
+            // delay one frame so scene becomes ready
             EditorApplication.delayCall += CaptureSnapshotsInPlayMode;
         }
 
@@ -56,8 +56,8 @@ namespace RuntimeChangesSaver.Editor
             switch (state)
             {
                 case PlayModeStateChange.ExitingEditMode:
-                    // Beim Start in den Play Mode immer den persistenten Store leeren,
-                    // damit wir nur Änderungen aus der aktuellen Session übernehmen.
+                    // clear persistent stores when entering play mode
+                    // ensure overrides only from current session
                     var transformStoreOnEnterPlay = TransformChangesStore.LoadExisting();
                     if (transformStoreOnEnterPlay != null)
                     {
@@ -71,12 +71,12 @@ namespace RuntimeChangesSaver.Editor
                     }
 
                     CaptureSnapshotsInEditMode();
-                    // Also set flag in case ExitingEditMode doesn't capture properly
+                    // safety flag in case ExitingEditMode capture fails
                     EditorPrefs.SetBool(PREFS_KEY, snapshots.Count == 0);
                     break;
 
                 case PlayModeStateChange.EnteredPlayMode:
-                    // If no snapshots, schedule capture for next frame
+                    // schedule snapshot capture for next frame when none exist
                     if (snapshots.Count == 0)
                     {
                         EditorPrefs.SetBool(PREFS_KEY, true);
@@ -122,7 +122,7 @@ namespace RuntimeChangesSaver.Editor
                 return;
             }
 
-            // Find all GameObjects in all loaded scenes
+            // collect all GameObjects from all loaded scenes
             for (int i = 0; i < sceneCount; i++)
             {
                 Scene scene = SceneManager.GetSceneAt(i);
@@ -146,7 +146,7 @@ namespace RuntimeChangesSaver.Editor
             string key = GetGameObjectKey(go);
             snapshots[key] = new TransformSnapshot(go);
 
-            // Capture all components
+            // capture all non-transform components
             var compDict = new Dictionary<string, ComponentSnapshot>();
             Component[] components = go.GetComponents<Component>();
             foreach (var comp in components)
@@ -163,7 +163,7 @@ namespace RuntimeChangesSaver.Editor
 
             componentSnapshots[key] = compDict;
 
-            // Recurse to children
+            // recurse into child GameObjects
             foreach (Transform child in go.transform)
             {
                 count += CaptureGameObjectRecursive(child.gameObject);
@@ -187,7 +187,7 @@ namespace RuntimeChangesSaver.Editor
             {
                 enterChildren = false;
 
-                // Skip script reference
+                // skip script reference property
                 if (prop.name == "m_Script") continue;
 
                 try
@@ -229,7 +229,7 @@ namespace RuntimeChangesSaver.Editor
         {
             if (go == null) return "";
 
-            // Use scene path + GameObject path as unique identifier
+            // unique identifier composed of scene path and GameObject path
             string scenePath = go.scene.path;
             if (string.IsNullOrEmpty(scenePath))
                 scenePath = go.scene.name;
@@ -238,9 +238,9 @@ namespace RuntimeChangesSaver.Editor
             return $"{scenePath}|{goPath}";
         }
 
-        // Wird verwendet, um nach einem Revert im Compare-Popup im Play Mode
-        // die Baseline für den Transform eines bestimmten GameObjects neu zu setzen,
-        // damit GetChangedComponents dieses Transform nicht mehr als "geändert" meldet.
+        // used after revert in compare popup during play mode
+        // reset baseline transform for specific GameObject
+        // prevent GetChangedComponents from reporting transform as changed
         public static void ResetTransformBaseline(GameObject go)
         {
             if (go == null) return;
@@ -248,8 +248,8 @@ namespace RuntimeChangesSaver.Editor
             snapshots[key] = new TransformSnapshot(go);
         }
 
-        // Wird verwendet, um nach einem Revert im Compare-Popup im Play Mode
-        // die Baseline nur für eine spezifische Nicht-Transform-Komponente neu zu setzen.
+        // used after revert in compare popup during play mode
+        // reset baseline only for specific non-transform component
         public static void ResetComponentBaseline(Component comp)
         {
             if (comp == null) return;
@@ -280,7 +280,7 @@ namespace RuntimeChangesSaver.Editor
 
             string key = GetGameObjectKey(go);
 
-            // If no snapshots exist, this GameObject wasn't captured
+            // early exit when no snapshot exists for this GameObject
             if (!componentSnapshots.ContainsKey(key))
             {
                 return new List<Component>();
@@ -289,7 +289,7 @@ namespace RuntimeChangesSaver.Editor
             var changed = new List<Component>();
             var compSnapshots = componentSnapshots[key];
 
-            // Check Transform changes separately
+            // check Transform changes separately from other components
             if (snapshots.TryGetValue(key, out var originalTransform))
             {
                 TransformSnapshot currentTransform = new TransformSnapshot(go);
@@ -306,7 +306,7 @@ namespace RuntimeChangesSaver.Editor
                 }
             }
 
-            // Check other components
+            // other components change check
             foreach (var comp in go.GetComponents<Component>())
             {
                 if (comp is null or Transform) continue;
@@ -352,7 +352,7 @@ namespace RuntimeChangesSaver.Editor
                     if (currentValue == null && originalValue == null) continue;
                     if (currentValue == null || originalValue == null) return true;
 
-                    // Special handling for different types
+                    // special comparison handling for numeric and vector types
                     if (currentValue is Vector2 v2Current && originalValue is Vector2 v2Original)
                     {
                         if (Vector2.Distance(v2Current, v2Original) > 0.0001f) return true;
@@ -376,7 +376,7 @@ namespace RuntimeChangesSaver.Editor
                 }
                 catch
                 {
-                    // ignored
+                    // ignore comparison errors
                 }
             }
 
@@ -398,8 +398,8 @@ namespace RuntimeChangesSaver.Editor
                 if (!snapshots.ContainsKey(goKey))
                     continue;
 
-                // Parse the key to find the GameObject
-                // Key format: "scenePath|goPath"
+                // parse composite key to locate GameObject
+                // key format: "scenePath|goPath"
                 var parts = goKey.Split('|');
                 if (parts.Length != 2) continue;
 
@@ -464,7 +464,7 @@ namespace RuntimeChangesSaver.Editor
             string goKey = GetGameObjectKey(go);
             string compKey = GetComponentKey(comp);
 
-            // Ursprünglichen Snapshot sichern, bevor wir die Baseline verschieben.
+            // store original snapshot before shifting baseline
             ComponentSnapshot originalSnapshot = null;
 
             if (!componentSnapshots.TryGetValue(goKey, out var dict))
@@ -480,11 +480,11 @@ namespace RuntimeChangesSaver.Editor
                 }
             }
 
-            // Baseline für diese Komponente auf aktuellen Zustand verschieben
+            // shift baseline for this component to current state
             ComponentSnapshot currentSnapshot = CaptureComponentSnapshot(comp);
             dict[compKey] = currentSnapshot;
 
-            // Änderungen im ScriptableObject speichern (inkl. Originalwerte, falls verfügbar).
+            // persist component changes inside ScriptableObject store (including original values when available)
             RecordComponentChangeToStore(comp, originalSnapshot);
         }
 
@@ -497,7 +497,7 @@ namespace RuntimeChangesSaver.Editor
             var allOfType = comp.gameObject.GetComponents(comp.GetType());
             int index = Array.IndexOf(allOfType, comp);
 
-            // Erzeuge einen Schnappschuss des aktuellen Zustands
+            // create snapshot of current component state
             SerializedObject so = new SerializedObject(comp);
             SerializedProperty prop = so.GetIterator();
 
@@ -518,12 +518,12 @@ namespace RuntimeChangesSaver.Editor
                 values.Add(serializedValue);
             }
 
-            // Bestehenden Eintrag für diese Komponente suchen
+            // search existing change entry for this component
             int existing = store.changes.FindIndex(c => c.scenePath == scenePath && c.objectPath == objectPath && c.componentType == comp.GetType().AssemblyQualifiedName && c.componentIndex == index);
 
-            // Originalwerte bestimmen:
-            // - Wenn bereits ein Eintrag mit Originalwerten existiert, diesen beibehalten.
-            // - Andernfalls aus dem übergebenen Snapshot ableiten (falls vorhanden).
+            // determine original values source
+            // keep existing original values when entry already present
+            // otherwise derive original values from provided snapshot when available
             bool hasOriginal = false;
             List<string> originalValues = new List<string>();
             List<string> originalTypes = new List<string>();
@@ -632,7 +632,7 @@ namespace RuntimeChangesSaver.Editor
                     serializedValue = prop.enumValueIndex.ToString();
                     break;
                 default:
-                    // Nicht unterstützte Typen ignorieren wir
+                    // unsupported property types ignored
                     typeName = string.Empty;
                     serializedValue = string.Empty;
                     break;
@@ -691,7 +691,7 @@ namespace RuntimeChangesSaver.Editor
                     serializedValue = Convert.ToInt32(e).ToString();
                     break;
                 default:
-                    // Nicht unterstützte Typen bleiben leer
+                    // unsupported snapshot value types left empty
                     typeName = string.Empty;
                     serializedValue = string.Empty;
                     break;
@@ -757,9 +757,8 @@ namespace RuntimeChangesSaver.Editor
 
         private static void ApplyChangesFromStoreToEditMode()
         {
-            // Transform-Änderungen werden über das ScriptableObject
-            // PlayModeTransformChangesStore persistiert. Dies überlebt
-            // Domain Reloads besser als statische Dictionaries.
+            // use TransformChangesStore ScriptableObject for transform changes persistence
+            // provide better survival across domain reloads than static dictionaries
 
             var store = TransformChangesStore.LoadExisting();
             if (store != null && store.changes.Count > 0)
@@ -782,8 +781,8 @@ namespace RuntimeChangesSaver.Editor
 
                     Undo.RecordObject(t, "Apply Play Mode Transform Changes");
 
-                    // Wenn modifiedProperties gesetzt ist, nur diese anwenden,
-                    // sonst alle Transform-Werte.
+                    // apply only properties listed in modifiedProperties when set
+                    // otherwise apply all transform values
                     if (change.modifiedProperties is { Count: > 0 })
                     {
                         foreach (var prop in change.modifiedProperties)
