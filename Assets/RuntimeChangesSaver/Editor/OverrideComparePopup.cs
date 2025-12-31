@@ -30,7 +30,6 @@ namespace RuntimeChangesSaver.Editor
         void CreateSnapshotAndEditors()
         {
             var go = liveComponent.gameObject;
-            //Debug.Log($"[TransformDebug][ComparePopup.Create] LiveComponent='{liveComponent.GetType().Name}', GO='{go.name}'");
             snapshotGO = new GameObject("SnapshotTransform")
             {
                 hideFlags = HideFlags.HideAndDontSave
@@ -106,7 +105,6 @@ namespace RuntimeChangesSaver.Editor
                     SerializedObject so = new SerializedObject(snapshotComponent);
                     so.Update();
 
-                    //Debug.Log($"[TransformDebug][ComparePopup.Create] Baseline from TransformStore for GO='{go.name}', useOriginal={useOriginal}, pos={basePos}, rot={baseRot.eulerAngles}, scale={baseScale}");
                 }
                 else if (Application.isPlaying)
                 {
@@ -117,7 +115,6 @@ namespace RuntimeChangesSaver.Editor
 
                     if (originalSnapshot != null)
                     {
-                        //Debug.Log($"[TransformDebug][ComparePopup.Create] Original snapshot FOUND for GO='{go.name}'. isRect={originalSnapshot.isRectTransform}, pos={originalSnapshot.position}, rot={originalSnapshot.rotation.eulerAngles}, scale={originalSnapshot.scale}");
 
                         if (originalSnapshot.isRectTransform && liveComponent is RectTransform)
                         {
@@ -732,7 +729,6 @@ namespace RuntimeChangesSaver.Editor
                 }
             }
 
-            //Debug.Log($"[TransformDebug][ComparePopup.Revert] Reverted {liveComponent.GetType().Name} to original values");
 
             if (liveComponent != null)
             {
@@ -754,7 +750,6 @@ namespace RuntimeChangesSaver.Editor
                             tStore.changes.RemoveAt(index);
                             EditorUtility.SetDirty(tStore);
                             AssetDatabase.SaveAssets();
-                            //Debug.Log($"[TransformDebug][ComparePopup.Revert] Removed Transform entry from store for GO='{go.name}'");
                         }
                     }
                 }
@@ -779,7 +774,6 @@ namespace RuntimeChangesSaver.Editor
                             cStore.changes.RemoveAt(index);
                             EditorUtility.SetDirty(cStore);
                             AssetDatabase.SaveAssets();
-                            //Debug.Log($"[TransformDebug][ComparePopup.Revert] Removed Component entry from store for GO='{go.name}', comp='{liveComponent.GetType().Name}'");
                         }
                     }
                 }

@@ -12,4 +12,116 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b4c2cfbd95cee14438e41cd09b727b8b, type: 3}
   m_Name: ComponentChangesStore
   m_EditorClassIdentifier: Assembly-CSharp-Editor::RuntimeChangesSaver.Editor.ComponentChangesStore
-  changes: []
+  changes:
+  - scenePath: Assets/Scenes/MainScene.unity
+    objectPath: Cylinder
+    componentType: UnityEngine.CapsuleCollider, UnityEngine.PhysicsModule, Version=0.0.0.0,
+      Culture=neutral, PublicKeyToken=null
+    componentIndex: 0
+    propertyPaths:
+    - m_Material
+    - m_IncludeLayers
+    - m_ExcludeLayers
+    - m_LayerOverridePriority
+    - m_IsTrigger
+    - m_ProvidesContacts
+    - m_Radius
+    - m_Height
+    - m_Direction
+    - m_Center
+    serializedValues:
+    - 
+    - 
+    - 
+    - 0
+    - False
+    - False
+    - 0.5
+    - 7.019727
+    - 1
+    - 0,2.009863,0
+    valueTypes:
+    - 
+    - 
+    - 
+    - Integer
+    - Boolean
+    - Boolean
+    - Float
+    - Float
+    - Enum
+    - Vector3
+    hasOriginalValues: 1
+    originalSerializedValues:
+    - 
+    - 
+    - 
+    - 0
+    - False
+    - False
+    - 0.5
+    - 3
+    - 1
+    - 0,0,0
+    originalValueTypes:
+    - 
+    - 
+    - 
+    - Integer
+    - Boolean
+    - Boolean
+    - Float
+    - Float
+    - Integer
+    - Vector3
+  - scenePath: Assets/Scenes/TestScene.unity
+    objectPath: Cube
+    componentType: UnityEngine.BoxCollider, UnityEngine.PhysicsModule, Version=0.0.0.0,
+      Culture=neutral, PublicKeyToken=null
+    componentIndex: 0
+    propertyPaths:
+    - m_Material
+    - m_IncludeLayers
+    - m_ExcludeLayers
+    - m_LayerOverridePriority
+    - m_IsTrigger
+    - m_ProvidesContacts
+    - m_Size
+    - m_Center
+    serializedValues:
+    - 
+    - 
+    - 
+    - 0
+    - False
+    - False
+    - 1,4.230116,1
+    - 0,1.615058,0
+    valueTypes:
+    - 
+    - 
+    - 
+    - Integer
+    - Boolean
+    - Boolean
+    - Vector3
+    - Vector3
+    hasOriginalValues: 1
+    originalSerializedValues:
+    - 
+    - 
+    - 
+    - 0
+    - False
+    - False
+    - 1,1,1
+    - 0,0,0
+    originalValueTypes:
+    - 
+    - 
+    - 
+    - Integer
+    - Boolean
+    - Boolean
+    - Vector3
+    - Vector3

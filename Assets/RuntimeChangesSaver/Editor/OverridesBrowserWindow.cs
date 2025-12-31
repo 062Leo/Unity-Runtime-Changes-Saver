@@ -343,11 +343,28 @@ namespace RuntimeChangesSaver.Editor
                 {
                     RefreshData();
                 }
+
+                if (GUILayout.Button("Clear", GUILayout.Width(80)))
+                {
+                    var tStore = TransformChangesStore.LoadExisting();
+                    if (tStore != null)
+                    {
+                        tStore.Clear();
+                    }
+
+                    var cStore = ComponentChangesStore.LoadExisting();
+                    if (cStore != null)
+                    {
+                        cStore.Clear();
+                    }
+
+                    RefreshData();
+                }
             }
 
             if (_sceneEntries.Count == 0)
             {
-                EditorGUILayout.HelpBox("Keine geänderten Komponenten gefunden.", MessageType.Info);
+                EditorGUILayout.HelpBox("No changed components found", MessageType.Info);
                 return;
             }
 
