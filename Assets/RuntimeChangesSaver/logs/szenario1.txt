@@ -1,0 +1,317 @@
+Szenario 1 :
+
+Ich starte in scene 1 den play modus..,
+ich mach änderungen in scene 1.
+Im play modus wechsel ich zu scene 2.
+ich mach änderungen in scene 2.
+dann verlasse ich den play modus.
+unity beendet den play modus und wechselt zurück zu scene 1.
+
+
+LOG:
+
+
+[PlayOverrides][OnPlayModeStateChanged] state=EnteredPlayMode, isPlaying=True
+UnityEngine.Debug:Log (object)
+RuntimeChangesSaver.Editor.ChangesTracker:OnPlayModeStateChanged (UnityEditor.PlayModeStateChange) (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:68)
+UnityEditor.EditorApplication:Internal_PlayModeStateChanged (UnityEditor.PlayModeStateChange)
+
+[PlayOverrides][AcceptTransformChanges] GO='Cylinder', scenePath='Assets/Scenes/MainScene.unity', objectPath='Cylinder', hasOriginalSnapshot=True
+UnityEngine.Debug:Log (object)
+RuntimeChangesSaver.Editor.ChangesTracker:AcceptTransformChanges (UnityEngine.GameObject) (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1312)
+RuntimeChangesSaver.Editor.OverridesWindow:ApplyAllChanges () (at Assets/RuntimeChangesSaver/Editor/OverridesWindow.cs:185)
+RuntimeChangesSaver.Editor.OverridesWindow:DrawFooter (UnityEngine.Rect) (at Assets/RuntimeChangesSaver/Editor/OverridesWindow.cs:121)
+RuntimeChangesSaver.Editor.OverridesWindow:OnGUI (UnityEngine.Rect) (at Assets/RuntimeChangesSaver/Editor/OverridesWindow.cs:50)
+UnityEngine.GUIUtility:ProcessEvent (int,intptr,bool&)
+
+[PlayOverrides][RecordTransformChangeToStore] scenePath='Assets/Scenes/MainScene.unity', objectPath='Cylinder', modifiedProps=[position], existingIndex=-1, hasOriginal=True, totalChanges=1
+UnityEngine.Debug:Log (object)
+RuntimeChangesSaver.Editor.ChangesTracker:RecordTransformChangeToStore (UnityEngine.GameObject,RuntimeChangesSaver.Editor.TransformSnapshot,RuntimeChangesSaver.Editor.TransformSnapshot) (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1445)
+RuntimeChangesSaver.Editor.ChangesTracker:AcceptTransformChanges (UnityEngine.GameObject) (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1318)
+RuntimeChangesSaver.Editor.OverridesWindow:ApplyAllChanges () (at Assets/RuntimeChangesSaver/Editor/OverridesWindow.cs:185)
+RuntimeChangesSaver.Editor.OverridesWindow:DrawFooter (UnityEngine.Rect) (at Assets/RuntimeChangesSaver/Editor/OverridesWindow.cs:121)
+RuntimeChangesSaver.Editor.OverridesWindow:OnGUI (UnityEngine.Rect) (at Assets/RuntimeChangesSaver/Editor/OverridesWindow.cs:50)
+UnityEngine.GUIUtility:ProcessEvent (int,intptr,bool&)
+
+[PlayOverrides][AcceptTransformChanges] GO='ReferenceCube', scenePath='Assets/Scenes/TestScene.unity', objectPath='ReferenceCube', hasOriginalSnapshot=True
+UnityEngine.Debug:Log (object)
+RuntimeChangesSaver.Editor.ChangesTracker:AcceptTransformChanges (UnityEngine.GameObject) (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1312)
+RuntimeChangesSaver.Editor.OverridesWindow:ApplyAllChanges () (at Assets/RuntimeChangesSaver/Editor/OverridesWindow.cs:185)
+RuntimeChangesSaver.Editor.OverridesWindow:DrawFooter (UnityEngine.Rect) (at Assets/RuntimeChangesSaver/Editor/OverridesWindow.cs:121)
+RuntimeChangesSaver.Editor.OverridesWindow:OnGUI (UnityEngine.Rect) (at Assets/RuntimeChangesSaver/Editor/OverridesWindow.cs:50)
+UnityEngine.GUIUtility:ProcessEvent (int,intptr,bool&)
+
+[PlayOverrides][RecordTransformChangeToStore] scenePath='Assets/Scenes/TestScene.unity', objectPath='ReferenceCube', modifiedProps=[position], existingIndex=-1, hasOriginal=True, totalChanges=2
+UnityEngine.Debug:Log (object)
+RuntimeChangesSaver.Editor.ChangesTracker:RecordTransformChangeToStore (UnityEngine.GameObject,RuntimeChangesSaver.Editor.TransformSnapshot,RuntimeChangesSaver.Editor.TransformSnapshot) (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1445)
+RuntimeChangesSaver.Editor.ChangesTracker:AcceptTransformChanges (UnityEngine.GameObject) (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1318)
+RuntimeChangesSaver.Editor.OverridesWindow:ApplyAllChanges () (at Assets/RuntimeChangesSaver/Editor/OverridesWindow.cs:185)
+RuntimeChangesSaver.Editor.OverridesWindow:DrawFooter (UnityEngine.Rect) (at Assets/RuntimeChangesSaver/Editor/OverridesWindow.cs:121)
+RuntimeChangesSaver.Editor.OverridesWindow:OnGUI (UnityEngine.Rect) (at Assets/RuntimeChangesSaver/Editor/OverridesWindow.cs:50)
+UnityEngine.GUIUtility:ProcessEvent (int,intptr,bool&)
+
+[PlayOverrides][OnPlayModeStateChanged] state=ExitingPlayMode, isPlaying=True
+UnityEngine.Debug:Log (object)
+RuntimeChangesSaver.Editor.ChangesTracker:OnPlayModeStateChanged (UnityEditor.PlayModeStateChange) (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:68)
+UnityEngine.GUIUtility:ProcessEvent (int,intptr,bool&)
+
+[PlayOverrides][OnPlayModeStateChanged] state=EnteredEditMode, isPlaying=False
+UnityEngine.Debug:Log (object)
+RuntimeChangesSaver.Editor.ChangesTracker:OnPlayModeStateChanged (UnityEditor.PlayModeStateChange) (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:68)
+UnityEditor.EditorApplication:Internal_PlayModeStateChanged (UnityEditor.PlayModeStateChange)
+
+[PlayOverrides][EnteredEditMode] Fallback startScenePathAtPlayEnter='Assets/Scenes/MainScene.unity'
+UnityEngine.Debug:Log (object)
+RuntimeChangesSaver.Editor.ChangesTracker:OnPlayModeStateChanged (UnityEditor.PlayModeStateChange) (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:111)
+UnityEditor.EditorApplication:Internal_PlayModeStateChanged (UnityEditor.PlayModeStateChange)
+
+[PlayOverrides][EnteredEditMode] startScenePathAtPlayEnter='Assets/Scenes/MainScene.unity'
+UnityEngine.Debug:Log (object)
+RuntimeChangesSaver.Editor.ChangesTracker:OnPlayModeStateChanged (UnityEditor.PlayModeStateChange) (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:114)
+UnityEditor.EditorApplication:Internal_PlayModeStateChanged (UnityEditor.PlayModeStateChange)
+
+[PlayOverrides] All stable, opening popups...
+UnityEngine.Debug:Log (object)
+RuntimeChangesSaver.Editor.ChangesTracker/<>c:<TriggerApplyFlowAfterPlayExit>b__13_0 () (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:272)
+UnityEditor.EditorApplication:Internal_CallDelayFunctions ()
+
+[PlayOverrides][HandleApplyChangesFromStoreOnPlayExit] ENTER hasTransformChanges=True, hasComponentChanges=False
+UnityEngine.Debug:Log (object)
+RuntimeChangesSaver.Editor.ChangesTracker:HandleApplyChangesFromStoreOnPlayExit () (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:957)
+RuntimeChangesSaver.Editor.ChangesTracker/<>c:<TriggerApplyFlowAfterPlayExit>b__13_0 () (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:273)
+UnityEditor.EditorApplication:Internal_CallDelayFunctions ()
+
+[PlayOverrides][HandleApplyChangesFromStoreOnPlayExit] startScenePath='Assets/Scenes/MainScene.unity', orderedScenePaths=[Assets/Scenes/MainScene.unity, Assets/Scenes/TestScene.unity]
+UnityEngine.Debug:Log (object)
+RuntimeChangesSaver.Editor.ChangesTracker:HandleApplyChangesFromStoreOnPlayExit () (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:973)
+RuntimeChangesSaver.Editor.ChangesTracker/<>c:<TriggerApplyFlowAfterPlayExit>b__13_0 () (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:273)
+UnityEditor.EditorApplication:Internal_CallDelayFunctions ()
+
+[PlayOverrides][ProcessNextSceneInQueue] ENTER remainingScenes=[Assets/Scenes/MainScene.unity, Assets/Scenes/TestScene.unity], startScenePath='Assets/Scenes/MainScene.unity'
+UnityEngine.Debug:Log (object)
+RuntimeChangesSaver.Editor.ChangesTracker:ProcessNextSceneInQueue (System.Collections.Generic.List`1<string>,string,RuntimeChangesSaver.Editor.TransformChangesStore,RuntimeChangesSaver.Editor.ComponentChangesStore) (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:981)
+RuntimeChangesSaver.Editor.ChangesTracker:HandleApplyChangesFromStoreOnPlayExit () (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:976)
+RuntimeChangesSaver.Editor.ChangesTracker/<>c:<TriggerApplyFlowAfterPlayExit>b__13_0 () (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:273)
+UnityEditor.EditorApplication:Internal_CallDelayFunctions ()
+
+[PlayOverrides][ProcessNextSceneInQueue] activePath='Assets/Scenes/MainScene.unity', currentPath='Assets/Scenes/MainScene.unity'
+UnityEngine.Debug:Log (object)
+RuntimeChangesSaver.Editor.ChangesTracker:ProcessNextSceneInQueue (System.Collections.Generic.List`1<string>,string,RuntimeChangesSaver.Editor.TransformChangesStore,RuntimeChangesSaver.Editor.ComponentChangesStore) (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:994)
+RuntimeChangesSaver.Editor.ChangesTracker:HandleApplyChangesFromStoreOnPlayExit () (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:976)
+RuntimeChangesSaver.Editor.ChangesTracker/<>c:<TriggerApplyFlowAfterPlayExit>b__13_0 () (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:273)
+UnityEditor.EditorApplication:Internal_CallDelayFunctions ()
+
+[PlayOverrides][ProcessNextSceneInQueue] Showing Apply Overrides dialog for 'Assets/Scenes/MainScene.unity'
+UnityEngine.Debug:Log (object)
+RuntimeChangesSaver.Editor.ChangesTracker:ProcessNextSceneInQueue (System.Collections.Generic.List`1<string>,string,RuntimeChangesSaver.Editor.TransformChangesStore,RuntimeChangesSaver.Editor.ComponentChangesStore) (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1048)
+RuntimeChangesSaver.Editor.ChangesTracker:HandleApplyChangesFromStoreOnPlayExit () (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:976)
+RuntimeChangesSaver.Editor.ChangesTracker/<>c:<TriggerApplyFlowAfterPlayExit>b__13_0 () (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:273)
+UnityEditor.EditorApplication:Internal_CallDelayFunctions ()
+
+[PlayOverrides][ProcessNextSceneInQueue] User chose APPLY for 'Assets/Scenes/MainScene.unity'. Calling ApplyChangesFromStoreToEditModeForScene...
+UnityEngine.Debug:Log (object)
+RuntimeChangesSaver.Editor.ChangesTracker:ProcessNextSceneInQueue (System.Collections.Generic.List`1<string>,string,RuntimeChangesSaver.Editor.TransformChangesStore,RuntimeChangesSaver.Editor.ComponentChangesStore) (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1051)
+RuntimeChangesSaver.Editor.ChangesTracker:HandleApplyChangesFromStoreOnPlayExit () (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:976)
+RuntimeChangesSaver.Editor.ChangesTracker/<>c:<TriggerApplyFlowAfterPlayExit>b__13_0 () (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:273)
+UnityEditor.EditorApplication:Internal_CallDelayFunctions ()
+
+[PlayOverrides][ApplyChangesFromStoreToEditModeForScene] ENTER targetScenePath='Assets/Scenes/MainScene.unity', hasTransformStore=True, transformCount=2, hasCompStore=True, compCount=0
+UnityEngine.Debug:Log (object)
+RuntimeChangesSaver.Editor.ChangesTracker:ApplyChangesFromStoreToEditModeForScene (string,RuntimeChangesSaver.Editor.TransformChangesStore,RuntimeChangesSaver.Editor.ComponentChangesStore) (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1128)
+RuntimeChangesSaver.Editor.ChangesTracker:ProcessNextSceneInQueue (System.Collections.Generic.List`1<string>,string,RuntimeChangesSaver.Editor.TransformChangesStore,RuntimeChangesSaver.Editor.ComponentChangesStore) (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1052)
+RuntimeChangesSaver.Editor.ChangesTracker:HandleApplyChangesFromStoreOnPlayExit () (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:976)
+RuntimeChangesSaver.Editor.ChangesTracker/<>c:<TriggerApplyFlowAfterPlayExit>b__13_0 () (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:273)
+UnityEditor.EditorApplication:Internal_CallDelayFunctions ()
+
+[PlayOverrides][ApplyChangesFromStoreToEditModeForScene][Transform] Considering change for scenePath='Assets/Scenes/MainScene.unity' (normalized='Assets/Scenes/MainScene.unity') vs target='Assets/Scenes/MainScene.unity'
+UnityEngine.Debug:Log (object)
+RuntimeChangesSaver.Editor.ChangesTracker:ApplyChangesFromStoreToEditModeForScene (string,RuntimeChangesSaver.Editor.TransformChangesStore,RuntimeChangesSaver.Editor.ComponentChangesStore) (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1135)
+RuntimeChangesSaver.Editor.ChangesTracker:ProcessNextSceneInQueue (System.Collections.Generic.List`1<string>,string,RuntimeChangesSaver.Editor.TransformChangesStore,RuntimeChangesSaver.Editor.ComponentChangesStore) (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1052)
+RuntimeChangesSaver.Editor.ChangesTracker:HandleApplyChangesFromStoreOnPlayExit () (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:976)
+RuntimeChangesSaver.Editor.ChangesTracker/<>c:<TriggerApplyFlowAfterPlayExit>b__13_0 () (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:273)
+UnityEditor.EditorApplication:Internal_CallDelayFunctions ()
+
+[PlayOverrides][ApplyChangesFromStoreToEditModeForScene][Transform] Applying change to GO='Cylinder', scene='Assets/Scenes/MainScene.unity', objectPath='Cylinder', props=[position] 
+UnityEngine.Debug:Log (object)
+RuntimeChangesSaver.Editor.ChangesTracker:ApplyChangesFromStoreToEditModeForScene (string,RuntimeChangesSaver.Editor.TransformChangesStore,RuntimeChangesSaver.Editor.ComponentChangesStore) (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1162)
+RuntimeChangesSaver.Editor.ChangesTracker:ProcessNextSceneInQueue (System.Collections.Generic.List`1<string>,string,RuntimeChangesSaver.Editor.TransformChangesStore,RuntimeChangesSaver.Editor.ComponentChangesStore) (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1052)
+RuntimeChangesSaver.Editor.ChangesTracker:HandleApplyChangesFromStoreOnPlayExit () (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:976)
+RuntimeChangesSaver.Editor.ChangesTracker/<>c:<TriggerApplyFlowAfterPlayExit>b__13_0 () (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:273)
+UnityEditor.EditorApplication:Internal_CallDelayFunctions ()
+
+[PlayOverrides][ApplyChangesFromStoreToEditModeForScene][Transform] Considering change for scenePath='Assets/Scenes/TestScene.unity' (normalized='Assets/Scenes/TestScene.unity') vs target='Assets/Scenes/MainScene.unity'
+UnityEngine.Debug:Log (object)
+RuntimeChangesSaver.Editor.ChangesTracker:ApplyChangesFromStoreToEditModeForScene (string,RuntimeChangesSaver.Editor.TransformChangesStore,RuntimeChangesSaver.Editor.ComponentChangesStore) (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1135)
+RuntimeChangesSaver.Editor.ChangesTracker:ProcessNextSceneInQueue (System.Collections.Generic.List`1<string>,string,RuntimeChangesSaver.Editor.TransformChangesStore,RuntimeChangesSaver.Editor.ComponentChangesStore) (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1052)
+RuntimeChangesSaver.Editor.ChangesTracker:HandleApplyChangesFromStoreOnPlayExit () (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:976)
+RuntimeChangesSaver.Editor.ChangesTracker/<>c:<TriggerApplyFlowAfterPlayExit>b__13_0 () (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:273)
+UnityEditor.EditorApplication:Internal_CallDelayFunctions ()
+
+[PlayOverrides][ApplyChangesFromStoreToEditModeForScene] LEAVE
+UnityEngine.Debug:Log (object)
+RuntimeChangesSaver.Editor.ChangesTracker:ApplyChangesFromStoreToEditModeForScene (string,RuntimeChangesSaver.Editor.TransformChangesStore,RuntimeChangesSaver.Editor.ComponentChangesStore) (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1261)
+RuntimeChangesSaver.Editor.ChangesTracker:ProcessNextSceneInQueue (System.Collections.Generic.List`1<string>,string,RuntimeChangesSaver.Editor.TransformChangesStore,RuntimeChangesSaver.Editor.ComponentChangesStore) (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1052)
+RuntimeChangesSaver.Editor.ChangesTracker:HandleApplyChangesFromStoreOnPlayExit () (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:976)
+RuntimeChangesSaver.Editor.ChangesTracker/<>c:<TriggerApplyFlowAfterPlayExit>b__13_0 () (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:273)
+UnityEditor.EditorApplication:Internal_CallDelayFunctions ()
+
+[PlayOverrides][ProcessNextSceneInQueue] Apply delay 1 (after ApplyChangesFromStoreToEditModeForScene)
+UnityEngine.Debug:Log (object)
+RuntimeChangesSaver.Editor.ChangesTracker/<>c__DisplayClass41_0:<ProcessNextSceneInQueue>b__0 () (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1057)
+UnityEditor.EditorApplication:Internal_CallDelayFunctions ()
+
+[PlayOverrides][ProcessNextSceneInQueue] Apply delay 2 (SaveAssets/Refresh)
+UnityEngine.Debug:Log (object)
+RuntimeChangesSaver.Editor.ChangesTracker/<>c__DisplayClass41_0:<ProcessNextSceneInQueue>b__6 () (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1061)
+UnityEditor.EditorApplication:Internal_CallDelayFunctions ()
+
+[PlayOverrides][ProcessNextSceneInQueue] Apply delay 3 (RepaintAll/DirtyHierarchy)
+UnityEngine.Debug:Log (object)
+RuntimeChangesSaver.Editor.ChangesTracker/<>c__DisplayClass41_0:<ProcessNextSceneInQueue>b__7 () (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1068)
+UnityEditor.EditorApplication:Internal_CallDelayFunctions ()
+
+[PlayOverrides][ProcessNextSceneInQueue] Apply delay 4 (continue with remaining scenes)
+UnityEngine.Debug:Log (object)
+RuntimeChangesSaver.Editor.ChangesTracker/<>c__DisplayClass41_0:<ProcessNextSceneInQueue>b__8 () (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1075)
+UnityEditor.EditorApplication:Internal_CallDelayFunctions ()
+
+[PlayOverrides][ProcessNextSceneInQueue] ENTER remainingScenes=[Assets/Scenes/TestScene.unity], startScenePath='Assets/Scenes/MainScene.unity'
+UnityEngine.Debug:Log (object)
+RuntimeChangesSaver.Editor.ChangesTracker:ProcessNextSceneInQueue (System.Collections.Generic.List`1<string>,string,RuntimeChangesSaver.Editor.TransformChangesStore,RuntimeChangesSaver.Editor.ComponentChangesStore) (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:981)
+RuntimeChangesSaver.Editor.ChangesTracker/<>c__DisplayClass41_0:<ProcessNextSceneInQueue>b__8 () (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1077)
+UnityEditor.EditorApplication:Internal_CallDelayFunctions ()
+
+[PlayOverrides][ProcessNextSceneInQueue] activePath='Assets/Scenes/MainScene.unity', currentPath='Assets/Scenes/TestScene.unity'
+UnityEngine.Debug:Log (object)
+RuntimeChangesSaver.Editor.ChangesTracker:ProcessNextSceneInQueue (System.Collections.Generic.List`1<string>,string,RuntimeChangesSaver.Editor.TransformChangesStore,RuntimeChangesSaver.Editor.ComponentChangesStore) (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:994)
+RuntimeChangesSaver.Editor.ChangesTracker/<>c__DisplayClass41_0:<ProcessNextSceneInQueue>b__8 () (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1077)
+UnityEditor.EditorApplication:Internal_CallDelayFunctions ()
+
+[PlayOverrides][ProcessNextSceneInQueue] Active scene != target. Showing Scene Switch dialog for 'Assets/Scenes/TestScene.unity'
+UnityEngine.Debug:Log (object)
+RuntimeChangesSaver.Editor.ChangesTracker:ProcessNextSceneInQueue (System.Collections.Generic.List`1<string>,string,RuntimeChangesSaver.Editor.TransformChangesStore,RuntimeChangesSaver.Editor.ComponentChangesStore) (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:999)
+RuntimeChangesSaver.Editor.ChangesTracker/<>c__DisplayClass41_0:<ProcessNextSceneInQueue>b__8 () (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1077)
+UnityEditor.EditorApplication:Internal_CallDelayFunctions ()
+
+[PlayOverrides][ProcessNextSceneInQueue] Scene Switch dialog result switchScene=True
+UnityEngine.Debug:Log (object)
+RuntimeChangesSaver.Editor.ChangesTracker:ProcessNextSceneInQueue (System.Collections.Generic.List`1<string>,string,RuntimeChangesSaver.Editor.TransformChangesStore,RuntimeChangesSaver.Editor.ComponentChangesStore) (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1003)
+RuntimeChangesSaver.Editor.ChangesTracker/<>c__DisplayClass41_0:<ProcessNextSceneInQueue>b__8 () (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1077)
+UnityEditor.EditorApplication:Internal_CallDelayFunctions ()
+
+[PlayOverrides][ProcessNextSceneInQueue] Saving open scenes and opening 'Assets/Scenes/TestScene.unity'...
+UnityEngine.Debug:Log (object)
+RuntimeChangesSaver.Editor.ChangesTracker:ProcessNextSceneInQueue (System.Collections.Generic.List`1<string>,string,RuntimeChangesSaver.Editor.TransformChangesStore,RuntimeChangesSaver.Editor.ComponentChangesStore) (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1007)
+RuntimeChangesSaver.Editor.ChangesTracker/<>c__DisplayClass41_0:<ProcessNextSceneInQueue>b__8 () (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1077)
+UnityEditor.EditorApplication:Internal_CallDelayFunctions ()
+
+[PlayOverrides][ProcessNextSceneInQueue] Delay 1 after scene switch
+UnityEngine.Debug:Log (object)
+RuntimeChangesSaver.Editor.ChangesTracker/<>c__DisplayClass41_0:<ProcessNextSceneInQueue>b__2 () (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1014)
+UnityEditor.EditorApplication:Internal_CallDelayFunctions ()
+
+[PlayOverrides][ProcessNextSceneInQueue] Delay 2 after scene switch
+UnityEngine.Debug:Log (object)
+RuntimeChangesSaver.Editor.ChangesTracker/<>c__DisplayClass41_0:<ProcessNextSceneInQueue>b__3 () (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1018)
+UnityEditor.EditorApplication:Internal_CallDelayFunctions ()
+
+[PlayOverrides][ProcessNextSceneInQueue] Delay 3 after scene switch, repainting SceneView
+UnityEngine.Debug:Log (object)
+RuntimeChangesSaver.Editor.ChangesTracker/<>c__DisplayClass41_0:<ProcessNextSceneInQueue>b__4 () (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1022)
+UnityEditor.EditorApplication:Internal_CallDelayFunctions ()
+
+[PlayOverrides][ProcessNextSceneInQueue] Delay 4 after scene switch, continuing queue...
+UnityEngine.Debug:Log (object)
+RuntimeChangesSaver.Editor.ChangesTracker/<>c__DisplayClass41_0:<ProcessNextSceneInQueue>b__5 () (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1028)
+UnityEditor.EditorApplication:Internal_CallDelayFunctions ()
+
+[PlayOverrides][ProcessNextSceneInQueue] ENTER remainingScenes=[Assets/Scenes/TestScene.unity], startScenePath='Assets/Scenes/MainScene.unity'
+UnityEngine.Debug:Log (object)
+RuntimeChangesSaver.Editor.ChangesTracker:ProcessNextSceneInQueue (System.Collections.Generic.List`1<string>,string,RuntimeChangesSaver.Editor.TransformChangesStore,RuntimeChangesSaver.Editor.ComponentChangesStore) (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:981)
+RuntimeChangesSaver.Editor.ChangesTracker/<>c__DisplayClass41_0:<ProcessNextSceneInQueue>b__5 () (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1030)
+UnityEditor.EditorApplication:Internal_CallDelayFunctions ()
+
+[PlayOverrides][ProcessNextSceneInQueue] activePath='Assets/Scenes/TestScene.unity', currentPath='Assets/Scenes/TestScene.unity'
+UnityEngine.Debug:Log (object)
+RuntimeChangesSaver.Editor.ChangesTracker:ProcessNextSceneInQueue (System.Collections.Generic.List`1<string>,string,RuntimeChangesSaver.Editor.TransformChangesStore,RuntimeChangesSaver.Editor.ComponentChangesStore) (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:994)
+RuntimeChangesSaver.Editor.ChangesTracker/<>c__DisplayClass41_0:<ProcessNextSceneInQueue>b__5 () (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1030)
+UnityEditor.EditorApplication:Internal_CallDelayFunctions ()
+
+[PlayOverrides][ProcessNextSceneInQueue] Showing Apply Overrides dialog for 'Assets/Scenes/TestScene.unity'
+UnityEngine.Debug:Log (object)
+RuntimeChangesSaver.Editor.ChangesTracker:ProcessNextSceneInQueue (System.Collections.Generic.List`1<string>,string,RuntimeChangesSaver.Editor.TransformChangesStore,RuntimeChangesSaver.Editor.ComponentChangesStore) (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1048)
+RuntimeChangesSaver.Editor.ChangesTracker/<>c__DisplayClass41_0:<ProcessNextSceneInQueue>b__5 () (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1030)
+UnityEditor.EditorApplication:Internal_CallDelayFunctions ()
+
+[PlayOverrides][ProcessNextSceneInQueue] User chose APPLY for 'Assets/Scenes/TestScene.unity'. Calling ApplyChangesFromStoreToEditModeForScene...
+UnityEngine.Debug:Log (object)
+RuntimeChangesSaver.Editor.ChangesTracker:ProcessNextSceneInQueue (System.Collections.Generic.List`1<string>,string,RuntimeChangesSaver.Editor.TransformChangesStore,RuntimeChangesSaver.Editor.ComponentChangesStore) (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1051)
+RuntimeChangesSaver.Editor.ChangesTracker/<>c__DisplayClass41_0:<ProcessNextSceneInQueue>b__5 () (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1030)
+UnityEditor.EditorApplication:Internal_CallDelayFunctions ()
+
+[PlayOverrides][ApplyChangesFromStoreToEditModeForScene] ENTER targetScenePath='Assets/Scenes/TestScene.unity', hasTransformStore=True, transformCount=2, hasCompStore=True, compCount=0
+UnityEngine.Debug:Log (object)
+RuntimeChangesSaver.Editor.ChangesTracker:ApplyChangesFromStoreToEditModeForScene (string,RuntimeChangesSaver.Editor.TransformChangesStore,RuntimeChangesSaver.Editor.ComponentChangesStore) (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1128)
+RuntimeChangesSaver.Editor.ChangesTracker:ProcessNextSceneInQueue (System.Collections.Generic.List`1<string>,string,RuntimeChangesSaver.Editor.TransformChangesStore,RuntimeChangesSaver.Editor.ComponentChangesStore) (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1052)
+RuntimeChangesSaver.Editor.ChangesTracker/<>c__DisplayClass41_0:<ProcessNextSceneInQueue>b__5 () (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1030)
+UnityEditor.EditorApplication:Internal_CallDelayFunctions ()
+
+[PlayOverrides][ApplyChangesFromStoreToEditModeForScene][Transform] Considering change for scenePath='Assets/Scenes/MainScene.unity' (normalized='Assets/Scenes/MainScene.unity') vs target='Assets/Scenes/TestScene.unity'
+UnityEngine.Debug:Log (object)
+RuntimeChangesSaver.Editor.ChangesTracker:ApplyChangesFromStoreToEditModeForScene (string,RuntimeChangesSaver.Editor.TransformChangesStore,RuntimeChangesSaver.Editor.ComponentChangesStore) (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1135)
+RuntimeChangesSaver.Editor.ChangesTracker:ProcessNextSceneInQueue (System.Collections.Generic.List`1<string>,string,RuntimeChangesSaver.Editor.TransformChangesStore,RuntimeChangesSaver.Editor.ComponentChangesStore) (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1052)
+RuntimeChangesSaver.Editor.ChangesTracker/<>c__DisplayClass41_0:<ProcessNextSceneInQueue>b__5 () (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1030)
+UnityEditor.EditorApplication:Internal_CallDelayFunctions ()
+
+[PlayOverrides][ApplyChangesFromStoreToEditModeForScene][Transform] Considering change for scenePath='Assets/Scenes/TestScene.unity' (normalized='Assets/Scenes/TestScene.unity') vs target='Assets/Scenes/TestScene.unity'
+UnityEngine.Debug:Log (object)
+RuntimeChangesSaver.Editor.ChangesTracker:ApplyChangesFromStoreToEditModeForScene (string,RuntimeChangesSaver.Editor.TransformChangesStore,RuntimeChangesSaver.Editor.ComponentChangesStore) (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1135)
+RuntimeChangesSaver.Editor.ChangesTracker:ProcessNextSceneInQueue (System.Collections.Generic.List`1<string>,string,RuntimeChangesSaver.Editor.TransformChangesStore,RuntimeChangesSaver.Editor.ComponentChangesStore) (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1052)
+RuntimeChangesSaver.Editor.ChangesTracker/<>c__DisplayClass41_0:<ProcessNextSceneInQueue>b__5 () (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1030)
+UnityEditor.EditorApplication:Internal_CallDelayFunctions ()
+
+[PlayOverrides][ApplyChangesFromStoreToEditModeForScene][Transform] Applying change to GO='ReferenceCube', scene='Assets/Scenes/TestScene.unity', objectPath='ReferenceCube', props=[position] 
+UnityEngine.Debug:Log (object)
+RuntimeChangesSaver.Editor.ChangesTracker:ApplyChangesFromStoreToEditModeForScene (string,RuntimeChangesSaver.Editor.TransformChangesStore,RuntimeChangesSaver.Editor.ComponentChangesStore) (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1162)
+RuntimeChangesSaver.Editor.ChangesTracker:ProcessNextSceneInQueue (System.Collections.Generic.List`1<string>,string,RuntimeChangesSaver.Editor.TransformChangesStore,RuntimeChangesSaver.Editor.ComponentChangesStore) (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1052)
+RuntimeChangesSaver.Editor.ChangesTracker/<>c__DisplayClass41_0:<ProcessNextSceneInQueue>b__5 () (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1030)
+UnityEditor.EditorApplication:Internal_CallDelayFunctions ()
+
+[PlayOverrides][ApplyChangesFromStoreToEditModeForScene] LEAVE
+UnityEngine.Debug:Log (object)
+RuntimeChangesSaver.Editor.ChangesTracker:ApplyChangesFromStoreToEditModeForScene (string,RuntimeChangesSaver.Editor.TransformChangesStore,RuntimeChangesSaver.Editor.ComponentChangesStore) (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1261)
+RuntimeChangesSaver.Editor.ChangesTracker:ProcessNextSceneInQueue (System.Collections.Generic.List`1<string>,string,RuntimeChangesSaver.Editor.TransformChangesStore,RuntimeChangesSaver.Editor.ComponentChangesStore) (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1052)
+RuntimeChangesSaver.Editor.ChangesTracker/<>c__DisplayClass41_0:<ProcessNextSceneInQueue>b__5 () (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1030)
+UnityEditor.EditorApplication:Internal_CallDelayFunctions ()
+
+[PlayOverrides][ProcessNextSceneInQueue] ENTER remainingScenes=[], startScenePath='Assets/Scenes/MainScene.unity'
+UnityEngine.Debug:Log (object)
+RuntimeChangesSaver.Editor.ChangesTracker:ProcessNextSceneInQueue (System.Collections.Generic.List`1<string>,string,RuntimeChangesSaver.Editor.TransformChangesStore,RuntimeChangesSaver.Editor.ComponentChangesStore) (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:981)
+RuntimeChangesSaver.Editor.ChangesTracker/<>c__DisplayClass41_0:<ProcessNextSceneInQueue>b__8 () (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1077)
+UnityEditor.EditorApplication:Internal_CallDelayFunctions ()
+
+[PlayOverrides][ProcessNextSceneInQueue] No remaining scenes, calling CheckReturnToStartScene...
+UnityEngine.Debug:Log (object)
+RuntimeChangesSaver.Editor.ChangesTracker:ProcessNextSceneInQueue (System.Collections.Generic.List`1<string>,string,RuntimeChangesSaver.Editor.TransformChangesStore,RuntimeChangesSaver.Editor.ComponentChangesStore) (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:985)
+RuntimeChangesSaver.Editor.ChangesTracker/<>c__DisplayClass41_0:<ProcessNextSceneInQueue>b__8 () (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1077)
+UnityEditor.EditorApplication:Internal_CallDelayFunctions ()
+
+[PlayOverrides][CheckReturnToStartScene] currentPath='Assets/Scenes/TestScene.unity', startPath='Assets/Scenes/MainScene.unity' -> showing return dialog
+UnityEngine.Debug:Log (object)
+RuntimeChangesSaver.Editor.ChangesTracker:CheckReturnToStartScene (string) (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1096)
+RuntimeChangesSaver.Editor.ChangesTracker:ProcessNextSceneInQueue (System.Collections.Generic.List`1<string>,string,RuntimeChangesSaver.Editor.TransformChangesStore,RuntimeChangesSaver.Editor.ComponentChangesStore) (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:986)
+RuntimeChangesSaver.Editor.ChangesTracker/<>c__DisplayClass41_0:<ProcessNextSceneInQueue>b__8 () (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1077)
+UnityEditor.EditorApplication:Internal_CallDelayFunctions ()
+
+[PlayOverrides][CheckReturnToStartScene] User chose YES, opening start scene...
+UnityEngine.Debug:Log (object)
+RuntimeChangesSaver.Editor.ChangesTracker:CheckReturnToStartScene (string) (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1099)
+RuntimeChangesSaver.Editor.ChangesTracker:ProcessNextSceneInQueue (System.Collections.Generic.List`1<string>,string,RuntimeChangesSaver.Editor.TransformChangesStore,RuntimeChangesSaver.Editor.ComponentChangesStore) (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:986)
+RuntimeChangesSaver.Editor.ChangesTracker/<>c__DisplayClass41_0:<ProcessNextSceneInQueue>b__8 () (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1077)
+UnityEditor.EditorApplication:Internal_CallDelayFunctions ()
+
+[PlayOverrides][CheckReturnToStartScene] Start scene loaded and repainted. Flow finished.
+UnityEngine.Debug:Log (object)
+RuntimeChangesSaver.Editor.ChangesTracker/<>c:<CheckReturnToStartScene>b__42_2 () (at Assets/RuntimeChangesSaver/Editor/ChangesTracker.cs:1111)
+UnityEditor.EditorApplication:Internal_CallDelayFunctions ()
+

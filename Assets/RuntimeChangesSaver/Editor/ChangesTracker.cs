@@ -643,6 +643,8 @@ namespace RuntimeChangesSaver.Editor
             string goKey = GetGameObjectKey(go);
             string compKey = GetComponentKey(comp);
 
+            Debug.Log($"[PlayOverrides][AcceptComponentChanges] GO='{go.name}', scenePath='{go.scene.path}', goKey='{goKey}', compKey='{compKey}'");
+
             // store original snapshot before shifting baseline
             ComponentSnapshot originalSnapshot = null;
 
@@ -675,6 +677,8 @@ namespace RuntimeChangesSaver.Editor
             string objectPath = GetGameObjectPath(comp.transform);
             var allOfType = comp.gameObject.GetComponents(comp.GetType());
             int index = Array.IndexOf(allOfType, comp);
+
+            Debug.Log($"[PlayOverrides][RecordComponentChangeToStore] BEFORE scenePath='{scenePath}', objectPath='{objectPath}', type='{comp.GetType().Name}', index={index}, existingChangeCount={store.changes.Count}");
 
             // create snapshot of current component state
             SerializedObject so = new SerializedObject(comp);
@@ -761,6 +765,8 @@ namespace RuntimeChangesSaver.Editor
 
             EditorUtility.SetDirty(store);
             AssetDatabase.SaveAssets();
+
+            Debug.Log($"[PlayOverrides][RecordComponentChangeToStore] AFTER scenePath='{scenePath}', objectPath='{objectPath}', type='{comp.GetType().Name}', index={index}, newChangeCount={store.changes.Count}, hasOriginal={hasOriginal}");
         }
 
         private static void SerializeComponentProperty(SerializedProperty prop, out string typeName, out string serializedValue)
@@ -948,6 +954,8 @@ namespace RuntimeChangesSaver.Editor
 
             isProcessingPlayExitPopups = true;
 
+            Debug.Log($"[PlayOverrides][HandleApplyChangesFromStoreOnPlayExit] ENTER hasTransformChanges={hasTransformChanges}, hasComponentChanges={hasComponentChanges}");
+
             var allScenePaths = new HashSet<string>();
             if (hasTransformChanges) foreach (var c in transformStore.changes) allScenePaths.Add(NormalizeScenePath(c.scenePath));
             if (hasComponentChanges) foreach (var c in compStore.changes) allScenePaths.Add(NormalizeScenePath(c.scenePath));
@@ -962,75 +970,153 @@ namespace RuntimeChangesSaver.Editor
                 orderedScenePaths.Insert(0, startScenePath);
             }
 
+            Debug.Log($"[PlayOverrides][HandleApplyChangesFromStoreOnPlayExit] startScenePath='{startScenePath}', orderedScenePaths=[{string.Join(", ", orderedScenePaths)}]");
+
             // Starte die Kette mit der ersten Szene
             ProcessNextSceneInQueue(orderedScenePaths, startScenePath, transformStore, compStore);
         }
 
         private static void ProcessNextSceneInQueue(List<string> remainingScenes, string startScenePath, TransformChangesStore tStore, ComponentChangesStore cStore)
+{
+    Debug.Log($"[PlayOverrides][ProcessNextSceneInQueue] ENTER remainingScenes=[{string.Join(", ", remainingScenes)}], startScenePath='{startScenePath}'");
+
+    if (remainingScenes.Count == 0)
+    {
+        Debug.Log("[PlayOverrides][ProcessNextSceneInQueue] No remaining scenes, calling CheckReturnToStartScene...");
+        CheckReturnToStartScene(startScenePath);
+        return;
+    }
+
+    string currentPath = remainingScenes[0];
+    remainingScenes.RemoveAt(0);
+
+    string activePath = NormalizeScenePath(SceneManager.GetActiveScene().path);
+    Debug.Log($"[PlayOverrides][ProcessNextSceneInQueue] activePath='{activePath}', currentPath='{currentPath}'");
+
+    // Wenn wir nicht in der Zielszene sind, fragen ob wir wechseln wollen
+    if (!string.Equals(activePath, currentPath, StringComparison.OrdinalIgnoreCase))
+    {
+        Debug.Log($"[PlayOverrides][ProcessNextSceneInQueue] Active scene != target. Showing Scene Switch dialog for '{currentPath}'");
+        bool switchScene = EditorUtility.DisplayDialog("Scene Switch", 
+            $"Switch to scene?\n\n{currentPath}", "Yes", "Discard remaining");
+
+        Debug.Log($"[PlayOverrides][ProcessNextSceneInQueue] Scene Switch dialog result switchScene={switchScene}");
+
+        if (switchScene)
         {
-            if (remainingScenes.Count == 0)
+            Debug.Log($"[PlayOverrides][ProcessNextSceneInQueue] Saving open scenes and opening '{currentPath}'...");
+            EditorSceneManager.SaveOpenScenes();
+            EditorSceneManager.OpenScene(currentPath, OpenSceneMode.Single);
+            
+            // KRITISCH: 4-facher Delay wie beim Apply, weil die Szene Zeit zum Laden UND Rendern braucht
+            EditorApplication.delayCall += () => 
             {
-                CheckReturnToStartScene(startScenePath);
-                return;
-            }
-
-            string currentPath = remainingScenes[0];
-            remainingScenes.RemoveAt(0);
-
-            string activePath = NormalizeScenePath(SceneManager.GetActiveScene().path);
-
-            // Wenn wir nicht in der Zielszene sind, fragen ob wir wechseln wollen
-            if (!string.Equals(activePath, currentPath, StringComparison.OrdinalIgnoreCase))
-            {
-                bool switchScene = EditorUtility.DisplayDialog("Scene Switch", 
-                    $"Switch to scene?\n\n{currentPath}", "Yes", "Discard remaining");
-
-                if (switchScene)
-                {
-                    EditorSceneManager.SaveOpenScenes();
-                    EditorSceneManager.OpenScene(currentPath, OpenSceneMode.Single);
-                    // Delay, damit die Szene fertig geladen und gezeichnet wird
-                    EditorApplication.delayCall += () => ProcessNextSceneInQueue(new List<string> { currentPath }.Concat(remainingScenes).ToList(), startScenePath, tStore, cStore);
-                    return;
-                }
-                else
-                {
-                    // Rest verwerfen und beenden
-                    isProcessingPlayExitPopups = false;
-                    return;
-                }
-            }
-
-            // Wenn wir in der richtigen Szene sind: Änderungen anwenden?
-            string msg = $"Apply play mode overrides for scene?\n\n{currentPath}";
-            if (EditorUtility.DisplayDialog("Apply Overrides", msg, "Apply", "Discard"))
-            {
-                ApplyChangesFromStoreToEditModeForScene(currentPath, tStore, cStore);
-                
-                // WICHTIG: delayCall nach dem Anwenden, damit SceneView aktualisiert wird
+                Debug.Log("[PlayOverrides][ProcessNextSceneInQueue] Delay 1 after scene switch");
+                // Frame 1: Szene wird geladen
                 EditorApplication.delayCall += () => 
                 {
-                    SceneView.RepaintAll();
-                    ProcessNextSceneInQueue(remainingScenes, startScenePath, tStore, cStore);
+                    Debug.Log("[PlayOverrides][ProcessNextSceneInQueue] Delay 2 after scene switch");
+                    // Frame 2: Assets werden verarbeitet
+                    EditorApplication.delayCall += () => 
+                    {
+                        Debug.Log("[PlayOverrides][ProcessNextSceneInQueue] Delay 3 after scene switch, repainting SceneView");
+                        // Frame 3: Scene View wird aktualisiert
+                        SceneView.RepaintAll();
+                        
+                        EditorApplication.delayCall += () => 
+                        {
+                            Debug.Log("[PlayOverrides][ProcessNextSceneInQueue] Delay 4 after scene switch, continuing queue...");
+                            // Frame 4: Alles ist stabil, jetzt weiter
+                            ProcessNextSceneInQueue(new List<string> { currentPath }.Concat(remainingScenes).ToList(), 
+                                startScenePath, tStore, cStore);
+                        };
+                    };
                 };
-            }
-            else
-            {
-                EditorApplication.delayCall += () => ProcessNextSceneInQueue(remainingScenes, startScenePath, tStore, cStore);
-            }
+            };
+            return;
         }
+        else
+        {
+            Debug.Log("[PlayOverrides][ProcessNextSceneInQueue] User chose 'Discard remaining' on Scene Switch dialog. Stopping flow.");
+            isProcessingPlayExitPopups = false;
+            return;
+        }
+    }
 
+    // Wenn wir in der richtigen Szene sind: Änderungen anwenden?
+    string msg = $"Apply play mode overrides for scene?\n\n{currentPath}";
+    Debug.Log($"[PlayOverrides][ProcessNextSceneInQueue] Showing Apply Overrides dialog for '{currentPath}'");
+    if (EditorUtility.DisplayDialog("Apply Overrides", msg, "Apply", "Discard"))
+    {
+        Debug.Log($"[PlayOverrides][ProcessNextSceneInQueue] User chose APPLY for '{currentPath}'. Calling ApplyChangesFromStoreToEditModeForScene...");
+        ApplyChangesFromStoreToEditModeForScene(currentPath, tStore, cStore);
+        
+        // KRITISCH: 4-facher Delay damit alle Änderungen sichtbar werden
+        EditorApplication.delayCall += () => 
+        {
+            Debug.Log("[PlayOverrides][ProcessNextSceneInQueue] Apply delay 1 (after ApplyChangesFromStoreToEditModeForScene)");
+            // Frame 1: Undo-System registriert Änderungen
+            EditorApplication.delayCall += () => 
+            {
+                Debug.Log("[PlayOverrides][ProcessNextSceneInQueue] Apply delay 2 (SaveAssets/Refresh)");
+                // Frame 2: Assets werden persistiert
+                AssetDatabase.SaveAssets();
+                AssetDatabase.Refresh();
+                
+                EditorApplication.delayCall += () => 
+                {
+                    Debug.Log("[PlayOverrides][ProcessNextSceneInQueue] Apply delay 3 (RepaintAll/DirtyHierarchy)");
+                    // Frame 3: Scene View wird aktualisiert
+                    SceneView.RepaintAll();
+                    EditorApplication.DirtyHierarchyWindowSorting();
+                    
+                    EditorApplication.delayCall += () => 
+                    {
+                        Debug.Log("[PlayOverrides][ProcessNextSceneInQueue] Apply delay 4 (continue with remaining scenes)");
+                        // Frame 4: Alles ist stabil, jetzt weiter zur nächsten Scene
+                        ProcessNextSceneInQueue(remainingScenes, startScenePath, tStore, cStore);
+                    };
+                };
+            };
+        };
+    }
+    else
+    {
+        Debug.Log($"[PlayOverrides][ProcessNextSceneInQueue] User chose DISCARD for '{currentPath}'. Scheduling next scene...");
+        EditorApplication.delayCall += () => ProcessNextSceneInQueue(remainingScenes, startScenePath, tStore, cStore);
+    }
+}
+
+        // Auch CheckReturnToStartScene mit mehr Delays:
         private static void CheckReturnToStartScene(string startPath)
         {
             string currentPath = NormalizeScenePath(SceneManager.GetActiveScene().path);
             if (!string.IsNullOrEmpty(startPath) && !string.Equals(currentPath, startPath, StringComparison.OrdinalIgnoreCase))
             {
+                Debug.Log($"[PlayOverrides][CheckReturnToStartScene] currentPath='{currentPath}', startPath='{startPath}' -> showing return dialog");
                 if (EditorUtility.DisplayDialog("Return to start scene?", $"Do you want to return to:\n\n{startPath}", "Yes", "No"))
                 {
+                    Debug.Log("[PlayOverrides][CheckReturnToStartScene] User chose YES, opening start scene...");
                     EditorSceneManager.SaveOpenScenes();
                     EditorSceneManager.OpenScene(startPath, OpenSceneMode.Single);
+                    
+                    // Mehrfacher Delay für vollständiges Laden der Start-Szene
+                    EditorApplication.delayCall += () => 
+                    {
+                        EditorApplication.delayCall += () => 
+                        {
+                            EditorApplication.delayCall += () => 
+                            {
+                                SceneView.RepaintAll();
+                                Debug.Log("[PlayOverrides][CheckReturnToStartScene] Start scene loaded and repainted. Flow finished.");
+                                isProcessingPlayExitPopups = false;
+                            };
+                        };
+                    };
+                    return;
                 }
             }
+            Debug.Log("[PlayOverrides][CheckReturnToStartScene] No return to start scene needed or user chose NO. Flow finished.");
             isProcessingPlayExitPopups = false;
         }
         
@@ -1039,16 +1125,39 @@ namespace RuntimeChangesSaver.Editor
         {
             targetScenePath = NormalizeScenePath(targetScenePath);
 
+            // Safety: in some flows (especially when only a single scene has changes), the
+            // passed-in store references can be null or stale. Reload them from disk to
+            // ensure we always see the latest persisted data before applying.
+            if (transformStore == null)
+            {
+                transformStore = TransformChangesStore.LoadExisting();
+                Debug.Log($"[PlayOverrides][ApplyChangesFromStoreToEditModeForScene] transformStore was null, reloaded. Now hasTransformStore={(transformStore != null)}, transformCount={(transformStore != null ? transformStore.changes.Count : 0)}");
+            }
+
+            if (compStore == null)
+            {
+                compStore = ComponentChangesStore.LoadExisting();
+                Debug.Log($"[PlayOverrides][ApplyChangesFromStoreToEditModeForScene] compStore was null, reloaded. Now hasCompStore={(compStore != null)}, compCount={(compStore != null ? compStore.changes.Count : 0)}");
+            }
+
+            Debug.Log($"[PlayOverrides][ApplyChangesFromStoreToEditModeForScene] ENTER targetScenePath='{targetScenePath}', hasTransformStore={(transformStore != null)}, transformCount={(transformStore != null ? transformStore.changes.Count : 0)}, hasCompStore={(compStore != null)}, compCount={(compStore != null ? compStore.changes.Count : 0)}");
+
             if (transformStore != null && transformStore.changes.Count > 0)
             {
                 foreach (var change in transformStore.changes)
                 {
-                    if (!string.Equals(NormalizeScenePath(change.scenePath), targetScenePath, StringComparison.OrdinalIgnoreCase))
+                    var normalizedChangePath = NormalizeScenePath(change.scenePath);
+                    Debug.Log($"[PlayOverrides][ApplyChangesFromStoreToEditModeForScene][Transform] Considering change for scenePath='{change.scenePath}' (normalized='{normalizedChangePath}') vs target='{targetScenePath}'");
+
+                    if (!string.Equals(normalizedChangePath, targetScenePath, StringComparison.OrdinalIgnoreCase))
                         continue;
 
-                    var scene = SceneManager.GetSceneByPath(NormalizeScenePath(change.scenePath));
+                    var scene = SceneManager.GetSceneByPath(normalizedChangePath);
                     if (!scene.IsValid())
+                    {
                         scene = SceneManager.GetSceneByName(change.scenePath);
+                        Debug.Log($"[PlayOverrides][ApplyChangesFromStoreToEditModeForScene][Transform] GetSceneByPath invalid, trying GetSceneByName('{change.scenePath}') -> valid={scene.IsValid()}");
+                    }
 
                     if (!scene.IsValid())
                         continue;
@@ -1065,7 +1174,7 @@ namespace RuntimeChangesSaver.Editor
 
                     Undo.RecordObject(t, "Apply Play Mode Transform Changes");
 
-                    Debug.Log($"[PlayOverrides][ApplyChangesForScene] Applying Transform change to GO='{go.name}', scene='{scene.path}', props=[{(change.modifiedProperties is { Count: > 0 } ? string.Join(",", change.modifiedProperties) : "ALL")}]");
+                    Debug.Log($"[PlayOverrides][ApplyChangesFromStoreToEditModeForScene][Transform] Applying change to GO='{go.name}', scene='{scene.path}', objectPath='{change.objectPath}', props=[{(change.modifiedProperties is { Count: > 0 } ? string.Join(",", change.modifiedProperties) : "ALL")}] ");
 
                     if (change.modifiedProperties is { Count: > 0 })
                     {
@@ -1105,12 +1214,18 @@ namespace RuntimeChangesSaver.Editor
             {
                 foreach (var change in compStore.changes)
                 {
-                    if (!string.Equals(NormalizeScenePath(change.scenePath), targetScenePath, StringComparison.OrdinalIgnoreCase))
+                    var normalizedChangePath = NormalizeScenePath(change.scenePath);
+                    Debug.Log($"[PlayOverrides][ApplyChangesFromStoreToEditModeForScene][Component] Considering change for scenePath='{change.scenePath}' (normalized='{normalizedChangePath}') vs target='{targetScenePath}'");
+
+                    if (!string.Equals(normalizedChangePath, targetScenePath, StringComparison.OrdinalIgnoreCase))
                         continue;
 
-                    var scene = SceneManager.GetSceneByPath(change.scenePath);
+                    var scene = SceneManager.GetSceneByPath(normalizedChangePath);
                     if (!scene.IsValid())
+                    {
                         scene = SceneManager.GetSceneByName(change.scenePath);
+                        Debug.Log($"[PlayOverrides][ApplyChangesFromStoreToEditModeForScene][Component] GetSceneByPath invalid, trying GetSceneByName('{change.scenePath}') -> valid={scene.IsValid()}");
+                    }
 
                     if (!scene.IsValid())
                         continue;
@@ -1134,6 +1249,8 @@ namespace RuntimeChangesSaver.Editor
                     SerializedObject so = new SerializedObject(comp);
                     Undo.RecordObject(comp, "Apply Play Mode Component Changes");
 
+                    Debug.Log($"[PlayOverrides][ApplyChangesFromStoreToEditModeForScene][Component] Applying change to GO='{go.name}', scene='{scene.path}', objectPath='{change.objectPath}', componentType='{change.componentType}', index={change.componentIndex}, propertyCount={change.propertyPaths.Count}");
+
                     for (int i = 0; i < change.propertyPaths.Count; i++)
                     {
                         string path = change.propertyPaths[i];
@@ -1156,12 +1273,12 @@ namespace RuntimeChangesSaver.Editor
                 }
             }
 
-            AssetDatabase.SaveAssets();
+            Debug.Log("[PlayOverrides][ApplyChangesFromStoreToEditModeForScene] LEAVE");
 
-            // Editor-Ansicht und Hierarchie aktualisieren, damit die
-            // angewendeten Änderungen sofort sichtbar werden.
-            SceneView.RepaintAll();
-            EditorApplication.DirtyHierarchyWindowSorting();
+            // WICHTIG: Entferne diese Zeilen hier, sie werden jetzt in ProcessNextSceneInQueue aufgerufen
+            // AssetDatabase.SaveAssets();
+            // SceneView.RepaintAll();
+            // EditorApplication.DirtyHierarchyWindowSorting();
         }
 
         private static void ApplySerializedComponentValue(SerializedProperty prop, string typeName, string value)
@@ -1206,6 +1323,8 @@ namespace RuntimeChangesSaver.Editor
             // Ursprünglichen Snapshot sichern, bevor wir die Baseline verschieben.
             TransformSnapshot original = GetSnapshot(go);
             TransformSnapshot current = new TransformSnapshot(go);
+
+            Debug.Log($"[PlayOverrides][AcceptTransformChanges] GO='{go.name}', scenePath='{go.scene.path}', objectPath='{GetGameObjectPath(go.transform)}', hasOriginalSnapshot={(original != null)}");
 
             // Baseline verschieben: aktueller Zustand wird neuer Snapshot.
             SetSnapshot(go, current);
@@ -1337,6 +1456,8 @@ namespace RuntimeChangesSaver.Editor
 
             EditorUtility.SetDirty(store);
             AssetDatabase.SaveAssets();
+
+            Debug.Log($"[PlayOverrides][RecordTransformChangeToStore] scenePath='{scenePath}', objectPath='{objectPath}', modifiedProps=[{string.Join(",", modifiedProps)}], existingIndex={existingIndex}, hasOriginal={hasOriginal}, totalChanges={store.changes.Count}");
         }
 
         private static void ApplyPropertyToTransform(Transform t, RectTransform rt, TransformChangesStore.TransformChange change, string prop)

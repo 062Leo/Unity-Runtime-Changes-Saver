@@ -16,7 +16,7 @@ MonoBehaviour:
   - scenePath: Assets/Scenes/MainScene.unity
     objectPath: Cylinder
     isRectTransform: 0
-    position: {x: -9.78, y: 0.0459, z: 0.57}
+    position: {x: -9.33, y: 0.0459, z: 0.57}
     rotation: {x: 0, y: 0, z: 0, w: 1}
     scale: {x: 1, y: 0.65532774, z: 1}
     anchoredPosition: {x: 0, y: 0}
@@ -30,7 +30,7 @@ MonoBehaviour:
     modifiedProperties:
     - position
     hasOriginalValues: 1
-    originalPosition: {x: -1.49, y: 0.0459, z: 0.57}
+    originalPosition: {x: -1.81, y: 0.0459, z: 0.57}
     originalRotation: {x: 0, y: 0, z: 0, w: 1}
     originalScale: {x: 1, y: 0.65532774, z: 1}
     originalAnchoredPosition: {x: 0, y: 0}
@@ -44,7 +44,7 @@ MonoBehaviour:
   - scenePath: Assets/Scenes/TestScene.unity
     objectPath: ReferenceCube
     isRectTransform: 0
-    position: {x: -21.03, y: 0, z: 2.47}
+    position: {x: -21.96, y: 0, z: 2.47}
     rotation: {x: 0, y: 0, z: 0, w: 1}
     scale: {x: 1, y: 1, z: 1}
     anchoredPosition: {x: 0, y: 0}
@@ -58,7 +58,7 @@ MonoBehaviour:
     modifiedProperties:
     - position
     hasOriginalValues: 1
-    originalPosition: {x: -5.22, y: 0, z: 2.47}
+    originalPosition: {x: -4.17, y: 0, z: 2.47}
     originalRotation: {x: 0, y: 0, z: 0, w: 1}
     originalScale: {x: 1, y: 1, z: 1}
     originalAnchoredPosition: {x: 0, y: 0}
