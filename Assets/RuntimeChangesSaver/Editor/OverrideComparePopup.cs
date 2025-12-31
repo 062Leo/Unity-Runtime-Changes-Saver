@@ -21,7 +21,12 @@ namespace RuntimeChangesSaver.Editor
         private const float FooterHeight = 40f;
         private const float FixedWindowHeight = 400f; // Feste Fensterhöhe
         private float scrollVelocity = 5f;
-
+        private const float MaxWindowHeight = 400f;
+        private const float MinWindowHeight = 250f;
+        private float currentWindowHeight = -1f;
+        private float targetWindowHeight = -1f;
+        private bool initialSizeSet = false;
+        
         public OverrideComparePopup(Component component)
         {
             liveComponent = component;
@@ -457,57 +462,64 @@ namespace RuntimeChangesSaver.Editor
         }
 
         public override Vector2 GetWindowSize()
-        {
-            return new Vector2(MinWidth * 2 + 6, FixedWindowHeight);
-        }
-
-        public override void OnGUI(Rect rect)
 {
-    if (leftEditor == null || rightEditor == null)
-    {
-        EditorGUILayout.HelpBox("Failed to create editors", MessageType.Error);
-        return;
-    }
+    // Startet bei Min, wächst dann dynamisch bis Max
+    float h = targetWindowHeight < 0 ? MinWindowHeight : targetWindowHeight;
+    return new Vector2(MinWidth * 2 + 6, h);
+}
 
-    // Prüfen, ob Scrollen nötig ist
-    bool needsScrolling = leftMaxScroll > 0 || rightMaxScroll > 0;
+public override void OnGUI(Rect rect)
+{
+    if (leftEditor == null || rightEditor == null) return;
 
-    // Mausrad nur verarbeiten, wenn Scrollen nötig
-    if (needsScrolling && rect.Contains(Event.current.mousePosition))
+    // 1. DYNAMISCHE GRÖSSEN-ANPASSUNG
+    // Wir messen ständig, wie viel Platz der Inhalt UNTER dem aktuellen Fenster bräuchte
+    float extraSpaceNeeded = Mathf.Max(leftMaxScroll, rightMaxScroll);
+    
+    if (Event.current.type == EventType.Layout)
     {
-        if (Event.current.type == EventType.ScrollWheel)
+        // Zielhöhe = Aktuelle Höhe + das was unten abgeschnitten ist
+        float desiredHeight = Mathf.Clamp(rect.height + extraSpaceNeeded, MinWindowHeight, MaxWindowHeight);
+        
+        // Nur anpassen, wenn die Abweichung relevant ist (> 1 Pixel)
+        if (Mathf.Abs(targetWindowHeight - desiredHeight) > 1f)
         {
-            scrollNormalized = Mathf.Clamp01(scrollNormalized + Event.current.delta.y * 0.05f);
-            Event.current.Use();
+            targetWindowHeight = desiredHeight;
+            // Das erzwingt, dass Unity GetWindowSize() neu aufruft und das Popup resizet
+            editorWindow.ShowAsDropDown(new Rect(editorWindow.position.position, Vector2.zero), GetWindowSize());
         }
     }
 
-    // Wenn nicht gescrollt werden kann, Reset auf 0
-    if (!needsScrolling) scrollNormalized = 0f;
+    // 2. SCROLL-LOGIK
+    // Scrollen ist nur aktiv, wenn wir am Max-Limit (400) angekommen sind und immer noch Platz brauchen
+    bool needsScrolling = (rect.height >= MaxWindowHeight - 1f) && extraSpaceNeeded > 0.5f;
+    HandleMouseWheel(rect, needsScrolling);
 
+    // 3. LAYOUT & ZEICHNEN
     float scrollbarWidth = needsScrolling ? 15f : 0f;
     float columnWidth = (rect.width - scrollbarWidth - 6) * 0.5f;
     float contentHeight = rect.height - FooterHeight - HeaderHeight;
 
-    // Header
     DrawColumnHeader(new Rect(rect.x, rect.y, columnWidth, HeaderHeight), leftEditor.target, "Original");
     DrawColumnHeader(new Rect(rect.x + columnWidth + 6, rect.y, columnWidth, HeaderHeight), rightEditor.target, "Play Mode");
 
     Rect contentRect = new Rect(rect.x, rect.y + HeaderHeight, rect.width, contentHeight);
-    
     GUILayout.BeginArea(contentRect);
     GUILayout.BeginHorizontal();
 
-    // Spalten
+    // Wir geben den Editoren den vollen Platz, damit sie ihre echte Höhe berechnen können
     DrawSynchronizedColumn(columnWidth, contentHeight, leftEditor, scrollNormalized, ref leftMaxScroll, false);
     DrawSeparator(new Rect(columnWidth, 0, 2, contentHeight));
     DrawSynchronizedColumn(columnWidth, contentHeight, rightEditor, scrollNormalized, ref rightMaxScroll, true);
 
-    // Scrollbar nur zeichnen, wenn nötig
     if (needsScrolling)
     {
         Rect scrollbarRect = new Rect(rect.width - 15, 0, 15, contentHeight);
         scrollNormalized = GUI.VerticalScrollbar(scrollbarRect, scrollNormalized, 0.1f, 0f, 1.0f);
+    }
+    else
+    {
+        scrollNormalized = 0f; // Reset wenn alles reinpasst
     }
 
     GUILayout.EndHorizontal();
@@ -515,6 +527,19 @@ namespace RuntimeChangesSaver.Editor
 
     DrawFooter(new Rect(rect.x, rect.y + rect.height - FooterHeight, rect.width, FooterHeight));
 }
+
+private void HandleMouseWheel(Rect rect, bool needsScrolling)
+{
+    if (needsScrolling && rect.Contains(Event.current.mousePosition) && Event.current.type == EventType.ScrollWheel)
+    {
+        scrollNormalized = Mathf.Clamp01(scrollNormalized + Event.current.delta.y * 0.05f);
+        Event.current.Use();
+    }
+}
+
+
+
+
         void DrawSynchronizedColumn(float width, float height, UnityEditor.Editor editor, float scrollValue, ref float maxScroll, bool editable)
         {
             // Bereich für diese Spalte
