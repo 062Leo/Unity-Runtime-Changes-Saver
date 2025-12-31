@@ -28,7 +28,7 @@ namespace RuntimeChangesSaver.Editor
             scale = t.localScale;
 
             RectTransform rt = t as RectTransform;
-            isRectTransform = rt != null;
+            isRectTransform = rt;
 
             if (isRectTransform)
             {
@@ -43,7 +43,6 @@ namespace RuntimeChangesSaver.Editor
                 offsetMax = rt.offsetMax;
             }
 
-            //Debug.Log($"[TransformDebug][Snapshot.Create] GO='{go.name}', isRect={isRectTransform}, pos={position}, rot={rotation.eulerAngles}, scale={scale}{(isRectTransform ? $", anchoredPos={anchoredPosition}, sizeDelta={sizeDelta}" : string.Empty)}");
         }
     }
 }

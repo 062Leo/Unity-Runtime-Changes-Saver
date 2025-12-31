@@ -1,5 +1,4 @@
-﻿using System.Linq;
-using UnityEditor;
+﻿using UnityEditor;
 using UnityEngine;
 
 namespace RuntimeChangesSaver.Editor
@@ -33,13 +32,9 @@ namespace RuntimeChangesSaver.Editor
             if (go == null)
                 return;
 
-            // changed components presence check
+            // check for changed components
             var changedComponents = ChangesTracker.GetChangedComponents(go);
             bool hasChanges = changedComponents.Count > 0;
-
-            bool hasTransformChange = changedComponents.Any(t => t is Transform or RectTransform);
-
-            //Debug.Log($"[TransformDebug][Inspector.Header] GO='{go.name}', changedCount={changedComponents.Count}, hasTransform={hasTransformChange}");
 
             EditorGUILayout.BeginHorizontal(EditorStyles.helpBox);
 

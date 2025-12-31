@@ -10,17 +10,23 @@ namespace RuntimeChangesSaver.Editor
         private Component snapshotComponent;
         private UnityEditor.Editor leftEditor;
         private UnityEditor.Editor rightEditor;
-        private Vector2 leftScroll;
-        private Vector2 rightScroll;
+        
+        // Gemeinsamer Scroll-Wert (0 bis 1)
+        private float scrollNormalized = 0f;
+        private float leftMaxScroll = 0f;
+        private float rightMaxScroll = 0f;
 
         private const float MinWidth = 350f;
         private const float HeaderHeight = 24f;
         private const float FooterHeight = 40f;
-        private float cachedHeight = -1f;
-        private bool isDragging;
-        private Vector2 dragStartMouse;
-        private Rect dragStartWindow;
-
+        private const float FixedWindowHeight = 400f; // Feste Fensterhöhe
+        private float scrollVelocity = 5f;
+        private const float MaxWindowHeight = 400f;
+        private const float MinWindowHeight = 250f;
+        private float currentWindowHeight = -1f;
+        private float targetWindowHeight = -1f;
+        private bool initialSizeSet = false;
+        
         public OverrideComparePopup(Component component)
         {
             liveComponent = component;
@@ -30,7 +36,6 @@ namespace RuntimeChangesSaver.Editor
         void CreateSnapshotAndEditors()
         {
             var go = liveComponent.gameObject;
-            //Debug.Log($"[TransformDebug][ComparePopup.Create] LiveComponent='{liveComponent.GetType().Name}', GO='{go.name}'");
             snapshotGO = new GameObject("SnapshotTransform")
             {
                 hideFlags = HideFlags.HideAndDontSave
@@ -106,22 +111,20 @@ namespace RuntimeChangesSaver.Editor
                     SerializedObject so = new SerializedObject(snapshotComponent);
                     so.Update();
 
-                    //Debug.Log($"[TransformDebug][ComparePopup.Create] Baseline from TransformStore for GO='{go.name}', useOriginal={useOriginal}, pos={basePos}, rot={baseRot.eulerAngles}, scale={baseScale}");
                 }
                 else if (Application.isPlaying)
                 {
-                    // No matching TransformChange entry in store
-                    // Stored snapshots usage in play mode as original state before changes
+                    // No matching TransformChange entry in store; use stored snapshot as original state
 
                     var originalSnapshot = ChangesTracker.GetSnapshot(go);
 
                     if (originalSnapshot != null)
                     {
-                        //Debug.Log($"[TransformDebug][ComparePopup.Create] Original snapshot FOUND for GO='{go.name}'. isRect={originalSnapshot.isRectTransform}, pos={originalSnapshot.position}, rot={originalSnapshot.rotation.eulerAngles}, scale={originalSnapshot.scale}");
 
                         if (originalSnapshot.isRectTransform && liveComponent is RectTransform)
                         {
-                            // AddComponent<RectTransform> automatic replacement of normal Transform
+                            // AddComponent<RectTransform> replaces default Transform automatically
+
                             snapshotComponent = snapshotGO.AddComponent<RectTransform>();
                         }
                         else
@@ -129,7 +132,8 @@ namespace RuntimeChangesSaver.Editor
                             snapshotComponent = snapshotGO.transform;
                         }
 
-                        // Values from snapshot applied to component
+                        // Apply snapshot values to component
+
                         if (snapshotComponent is RectTransform snapshotRT)
                         {
                             snapshotRT.anchoredPosition = originalSnapshot.anchoredPosition;
@@ -146,20 +150,9 @@ namespace RuntimeChangesSaver.Editor
                         snapshotComponent.transform.localRotation = originalSnapshot.rotation;
                         snapshotComponent.transform.localScale = originalSnapshot.scale;
 
-                        var t = snapshotComponent.transform;
-                        //Debug.Log($"[TransformDebug][ComparePopup.Create] Applied basic Transform data to snapshot GO='{snapshotGO.name}': pos={t.localPosition}, rot={t.localRotation.eulerAngles}, scale={t.localScale}");
-
                         SerializedObject so = new SerializedObject(snapshotComponent);
                         so.Update();
                     }
-                    else
-                    {
-                        //Debug.Log($"[TransformDebug][ComparePopup.Create] Original snapshot MISSING for GO='{go.name}' (Transform, Play Mode)");
-                    }
-                }
-                else
-                {
-                    //Debug.Log($"[TransformDebug][ComparePopup.Create] No TransformChange in store for GO='{go.name}' (Edit Mode, no baseline available)");
                 }
             }
             else
@@ -171,8 +164,7 @@ namespace RuntimeChangesSaver.Editor
 
                 if (Application.isPlaying)
                 {
-                    // Play mode lookup analogous to transforms
-                    // Matching entry search in ComponentChangesStore for already accepted overrides
+                    // Play mode lookup, search ComponentChangesStore for accepted overrides
 
                     ComponentChangesStore.ComponentChange match = null;
                     var compStore = ComponentChangesStore.LoadExisting();
@@ -239,7 +231,7 @@ namespace RuntimeChangesSaver.Editor
                     }
                     else
                     {
-                        // ComponentSnapshot usage fallback when no store entry found
+                        // Fallback: use ComponentSnapshot when no store entry
 
                         string compKey = ChangesTracker.GetComponentKey(liveComponent);
                         var snapshot = ChangesTracker.GetComponentSnapshot(go, compKey);
@@ -270,8 +262,7 @@ namespace RuntimeChangesSaver.Editor
                 }
                 else
                 {
-                    // Edit mode usage (e.g. browser)
-                    // Original component values retrieval from ComponentChangesStore
+                    // Edit mode (e.g. browser): read original values from ComponentChangesStore
 
                     var compStore = ComponentChangesStore.LoadExisting();
                     ComponentChangesStore.ComponentChange match = null;
@@ -339,13 +330,8 @@ namespace RuntimeChangesSaver.Editor
                 }
             }
 
-            if (snapshotComponent != null)
+            if (snapshotComponent)
             {
-                var leftTransform = snapshotComponent.transform;
-                var rightTransform = liveComponent?.transform;
-
-                //Debug.Log($"[TransformDebug][ComparePopup.EditorsCreated] snapshotComponentType={snapshotComponent.GetType().Name}, liveComponentType={liveComponent.GetType().Name}, leftPos={leftTransform.localPosition}, leftRot={leftTransform.localRotation.eulerAngles}, leftScale={leftTransform.localScale}, rightPos={(rightTransform != null ? rightTransform.localPosition.ToString() : "n/a")}, rightRot={(rightTransform != null ? rightTransform.localRotation.eulerAngles.ToString() : "n/a")}, rightScale={(rightTransform != null ? rightTransform.localScale.ToString() : "n/a")}");
-
                 leftEditor = UnityEditor.Editor.CreateEditor(snapshotComponent);
                 rightEditor = UnityEditor.Editor.CreateEditor(liveComponent);
             }
@@ -476,81 +462,119 @@ namespace RuntimeChangesSaver.Editor
         }
 
         public override Vector2 GetWindowSize()
+{
+    // Startet bei Min, wächst dann dynamisch bis Max
+    float h = targetWindowHeight < 0 ? MinWindowHeight : targetWindowHeight;
+    return new Vector2(MinWidth * 2 + 6, h);
+}
+
+public override void OnGUI(Rect rect)
+{
+    if (leftEditor == null || rightEditor == null) return;
+
+    // 1. DYNAMISCHE GRÖSSEN-ANPASSUNG
+    // Wir messen ständig, wie viel Platz der Inhalt UNTER dem aktuellen Fenster bräuchte
+    float extraSpaceNeeded = Mathf.Max(leftMaxScroll, rightMaxScroll);
+    
+    if (Event.current.type == EventType.Layout)
+    {
+        // Zielhöhe = Aktuelle Höhe + das was unten abgeschnitten ist
+        float desiredHeight = Mathf.Clamp(rect.height + extraSpaceNeeded, MinWindowHeight, MaxWindowHeight);
+        
+        // Nur anpassen, wenn die Abweichung relevant ist (> 1 Pixel)
+        if (Mathf.Abs(targetWindowHeight - desiredHeight) > 1f)
         {
-            if (cachedHeight < 0f)
+            targetWindowHeight = desiredHeight;
+            // Das erzwingt, dass Unity GetWindowSize() neu aufruft und das Popup resizet
+            editorWindow.ShowAsDropDown(new Rect(editorWindow.position.position, Vector2.zero), GetWindowSize());
+        }
+    }
+
+    // 2. SCROLL-LOGIK
+    // Scrollen ist nur aktiv, wenn wir am Max-Limit (400) angekommen sind und immer noch Platz brauchen
+    bool needsScrolling = (rect.height >= MaxWindowHeight - 1f) && extraSpaceNeeded > 0.5f;
+    HandleMouseWheel(rect, needsScrolling);
+
+    // 3. LAYOUT & ZEICHNEN
+    float scrollbarWidth = needsScrolling ? 15f : 0f;
+    float columnWidth = (rect.width - scrollbarWidth - 6) * 0.5f;
+    float contentHeight = rect.height - FooterHeight - HeaderHeight;
+
+    DrawColumnHeader(new Rect(rect.x, rect.y, columnWidth, HeaderHeight), leftEditor.target, "Original");
+    DrawColumnHeader(new Rect(rect.x + columnWidth + 6, rect.y, columnWidth, HeaderHeight), rightEditor.target, "Play Mode");
+
+    Rect contentRect = new Rect(rect.x, rect.y + HeaderHeight, rect.width, contentHeight);
+    GUILayout.BeginArea(contentRect);
+    GUILayout.BeginHorizontal();
+
+    // Wir geben den Editoren den vollen Platz, damit sie ihre echte Höhe berechnen können
+    DrawSynchronizedColumn(columnWidth, contentHeight, leftEditor, scrollNormalized, ref leftMaxScroll, false);
+    DrawSeparator(new Rect(columnWidth, 0, 2, contentHeight));
+    DrawSynchronizedColumn(columnWidth, contentHeight, rightEditor, scrollNormalized, ref rightMaxScroll, true);
+
+    if (needsScrolling)
+    {
+        Rect scrollbarRect = new Rect(rect.width - 15, 0, 15, contentHeight);
+        scrollNormalized = GUI.VerticalScrollbar(scrollbarRect, scrollNormalized, 0.1f, 0f, 1.0f);
+    }
+    else
+    {
+        scrollNormalized = 0f; // Reset wenn alles reinpasst
+    }
+
+    GUILayout.EndHorizontal();
+    GUILayout.EndArea();
+
+    DrawFooter(new Rect(rect.x, rect.y + rect.height - FooterHeight, rect.width, FooterHeight));
+}
+
+private void HandleMouseWheel(Rect rect, bool needsScrolling)
+{
+    if (needsScrolling && rect.Contains(Event.current.mousePosition) && Event.current.type == EventType.ScrollWheel)
+    {
+        scrollNormalized = Mathf.Clamp01(scrollNormalized + Event.current.delta.y * 0.05f);
+        Event.current.Use();
+    }
+}
+
+
+
+
+        void DrawSynchronizedColumn(float width, float height, UnityEditor.Editor editor, float scrollValue, ref float maxScroll, bool editable)
+        {
+            // Bereich für diese Spalte
+            Rect container = EditorGUILayout.BeginVertical(GUILayout.Width(width), GUILayout.Height(height));
+            
+            // Berechnung des tatsächlichen Offsets basierend auf der dynamischen Höhe
+            float currentOffset = scrollValue * maxScroll;
+            
+            Vector2 scrollPos = new Vector2(0, currentOffset);
+            
+            // ScrollView ohne sichtbare Scrollbars (da wir die Logik steuern)
+            scrollPos = GUILayout.BeginScrollView(scrollPos, GUIStyle.none, GUIStyle.none, GUILayout.Height(height));
+
+            GUI.enabled = editable;
+            
+            // Inhalt zeichnen
+            if (editor.target is Transform t)
+                DrawTransformInspector(t, editable);
+            else
+                editor.OnInspectorGUI();
+
+            // Hier erfassen wir die tatsächliche Höhe des Inhalts (wichtig für dynamische Listen)
+            if (Event.current.type == EventType.Repaint)
             {
-                cachedHeight = EstimateInspectorHeight();
+                Rect lastRect = GUILayoutUtility.GetLastRect();
+                maxScroll = Mathf.Max(0, lastRect.yMax - height);
             }
 
-            return new Vector2(MinWidth * 2 + 6, cachedHeight + FooterHeight);
+            GUI.enabled = true;
+            GUILayout.EndScrollView();
+            EditorGUILayout.EndVertical();
         }
 
-        public override void OnGUI(Rect rect)
-        {
-            if (leftEditor == null || rightEditor == null)
-            {
-                EditorGUILayout.HelpBox("Failed to create editors", MessageType.Error);
-                return;
-            }
-
-            float columnWidth = (rect.width - 6) * 0.5f;
-            float contentHeight = rect.height - FooterHeight;
-
-            Rect leftColumn = new Rect(rect.x, rect.y, columnWidth, contentHeight);
-            Rect rightColumn = new Rect(rect.x + columnWidth + 6, rect.y, columnWidth, contentHeight);
-            Rect footerRect = new Rect(rect.x, rect.y + contentHeight, rect.width, FooterHeight);
-
-            HandleWindowDragging(rect);
-
-            DrawColumn(leftColumn, leftEditor, ref leftScroll, "Original", false);
-            DrawSeparator(new Rect(rect.x + columnWidth, rect.y, 6, contentHeight));
-            DrawColumn(rightColumn, rightEditor, ref rightScroll, "Play Mode", true);
-
-            DrawFooter(footerRect);
-        }
-
-        void HandleWindowDragging(Rect windowRect)
-        {
-            if (editorWindow == null)
-                return;
-
-            Rect dragRect = new Rect(windowRect.x, windowRect.y, windowRect.width, HeaderHeight);
-            Event e = Event.current;
-
-            switch (e.type)
-            {
-                case EventType.MouseDown:
-                    if (e.button == 0 && dragRect.Contains(e.mousePosition))
-                    {
-                        isDragging = true;
-                        dragStartMouse = GUIUtility.GUIToScreenPoint(e.mousePosition);
-                        dragStartWindow = editorWindow.position;
-                        e.Use();
-                    }
-                    break;
-
-                case EventType.MouseDrag:
-                    if (isDragging)
-                    {
-                        Vector2 current = GUIUtility.GUIToScreenPoint(e.mousePosition);
-                        Vector2 delta = current - dragStartMouse;
-                        Rect pos = dragStartWindow;
-                        pos.position += delta;
-                        editorWindow.position = pos;
-                        e.Use();
-                    }
-                    break;
-
-                case EventType.MouseUp:
-                    if (isDragging && e.button == 0)
-                    {
-                        isDragging = false;
-                        e.Use();
-                    }
-                    break;
-            }
-        }
-
+        
+ 
         void DrawColumn(Rect columnRect, UnityEditor.Editor editor, ref Vector2 scroll, string title, bool editable)
         {
             // Column header area
@@ -732,9 +756,6 @@ namespace RuntimeChangesSaver.Editor
 
             targetSO.ApplyModifiedProperties();
 
-            // Im Play Mode zusätzlich die Baseline im PlayModeChangesTracker
-            // für dieses Objekt/diese Komponente aktualisieren, damit
-            // GetChangedComponents sie nicht weiter als "geändert" meldet.
             if (Application.isPlaying && liveComponent != null)
             {
                 if (liveComponent is Transform or RectTransform)
@@ -747,7 +768,6 @@ namespace RuntimeChangesSaver.Editor
                 }
             }
 
-            //Debug.Log($"[TransformDebug][ComparePopup.Revert] Reverted {liveComponent.GetType().Name} to original values");
 
             if (liveComponent != null)
             {
@@ -769,7 +789,6 @@ namespace RuntimeChangesSaver.Editor
                             tStore.changes.RemoveAt(index);
                             EditorUtility.SetDirty(tStore);
                             AssetDatabase.SaveAssets();
-                            //Debug.Log($"[TransformDebug][ComparePopup.Revert] Removed Transform entry from store for GO='{go.name}'");
                         }
                     }
                 }
@@ -794,13 +813,11 @@ namespace RuntimeChangesSaver.Editor
                             cStore.changes.RemoveAt(index);
                             EditorUtility.SetDirty(cStore);
                             AssetDatabase.SaveAssets();
-                            //Debug.Log($"[TransformDebug][ComparePopup.Revert] Removed Component entry from store for GO='{go.name}', comp='{liveComponent.GetType().Name}'");
                         }
                     }
                 }
             }
 
-            // Nach einem erfolgreichen Revert den Browser aktualisieren, falls er geöffnet ist.
             RefreshBrowserIfOpen();
         }
 

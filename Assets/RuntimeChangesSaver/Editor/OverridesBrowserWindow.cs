@@ -50,7 +50,7 @@ namespace RuntimeChangesSaver.Editor
 
             if (Application.isPlaying)
             {
-                // play mode dynamic change detection via in-memory snapshots
+                // play mode changes from in-memory snapshots
                 for (int i = 0; i < sceneCount; i++)
                 {
                     Scene scene = SceneManager.GetSceneAt(i);
@@ -72,8 +72,7 @@ namespace RuntimeChangesSaver.Editor
                     }
                 }
 
-                // additionally show already accepted overrides from ScriptableObject stores
-                // accepted overrides visibility in browser during play mode
+                // accepted overrides from ScriptableObject stores in play mode
 
                 var transformStore = TransformChangesStore.LoadExisting();
                 if (transformStore != null)
@@ -157,8 +156,7 @@ namespace RuntimeChangesSaver.Editor
             }
             else
             {
-                // edit mode usage of persistent ScriptableObject stores
-                // display of most recently accepted changes
+                // edit mode: persistent stores with last accepted changes
                 var sceneMap = new Dictionary<Scene, Dictionary<GameObject, GameObjectEntry>>();
 
                 var transformStore = TransformChangesStore.LoadExisting();
@@ -343,11 +341,28 @@ namespace RuntimeChangesSaver.Editor
                 {
                     RefreshData();
                 }
+
+                if (GUILayout.Button("Clear", GUILayout.Width(80)))
+                {
+                    var tStore = TransformChangesStore.LoadExisting();
+                    if (tStore != null)
+                    {
+                        tStore.Clear();
+                    }
+
+                    var cStore = ComponentChangesStore.LoadExisting();
+                    if (cStore != null)
+                    {
+                        cStore.Clear();
+                    }
+
+                    RefreshData();
+                }
             }
 
             if (_sceneEntries.Count == 0)
             {
-                EditorGUILayout.HelpBox("Keine geänderten Komponenten gefunden.", MessageType.Info);
+                EditorGUILayout.HelpBox("No changed components found", MessageType.Info);
                 return;
             }
 
@@ -369,7 +384,7 @@ namespace RuntimeChangesSaver.Editor
 
                 foreach (var entry in entries)
                 {
-                    if (entry.GameObject == null)
+                    if (!entry.GameObject)
                         continue;
 
                     EditorGUILayout.BeginHorizontal();
@@ -391,7 +406,7 @@ namespace RuntimeChangesSaver.Editor
                         GUILayout.Space(10);
                         if (GUILayout.Button(comp.GetType().Name, EditorStyles.linkLabel))
                         {
-                            // popup opening directly below button row
+                            // popup open position below button row
                             Rect buttonRect = GUILayoutUtility.GetLastRect();
                             Rect popupRect = new Rect(buttonRect.x, buttonRect.yMax, buttonRect.width, 0f);
                             PopupWindow.Show(popupRect, new OverrideComparePopup(comp));
