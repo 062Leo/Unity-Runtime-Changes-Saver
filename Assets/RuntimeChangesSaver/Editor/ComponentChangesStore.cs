@@ -20,7 +20,7 @@ namespace RuntimeChangesSaver.Editor
             public List<string> serializedValues = new List<string>();
             public List<string> valueTypes = new List<string>();
 
-            // flag and data for original baseline values of component
+            // original baseline values for component
             public bool hasOriginalValues;
             public List<string> originalSerializedValues = new List<string>();
             public List<string> originalValueTypes = new List<string>();
@@ -56,8 +56,7 @@ namespace RuntimeChangesSaver.Editor
 
         private static string GetRuntimeChangesSaverRootFolder()
         {
-            // locate script asset on disk
-            // walk up folders to "RuntimeChangesSaver" under Assets
+            // locate script asset, walk up to "RuntimeChangesSaver" folder under Assets
             string[] scriptGuids = AssetDatabase.FindAssets($"{nameof(ComponentChangesStore)} t:Script");
             if (scriptGuids is { Length: > 0 })
             {
@@ -66,7 +65,7 @@ namespace RuntimeChangesSaver.Editor
                 {
                     string dir = Path.GetDirectoryName(scriptPath)?.Replace("\\", "/");
 
-                    // walk upward from script until folder "RuntimeChangesSaver" or Assets root
+                    // walk upward from script until "RuntimeChangesSaver" or Assets root
                     while (!string.IsNullOrEmpty(dir) && dir.StartsWith("Assets"))
                     {
                         string folderName = Path.GetFileName(dir);
@@ -82,20 +81,20 @@ namespace RuntimeChangesSaver.Editor
                         dir = parent.Replace("\\", "/");
                     }
 
-                    // fallback: no RuntimeChangesSaver folder found
-                    // use script folder as root
+                    // Fallback: no "RuntimeChangesSaver" folder
+                    // Use script folder as root
                     return Path.GetDirectoryName(scriptPath)?.Replace("\\", "/");
                 }
             }
 
-            // final fallback: use Assets as root
+            // Final fallback: Assets
             return "Assets";
         }
 
         private static string GetDefaultAssetPath()
         {
-            // store asset inside RuntimeChangesSaver folder
-            // avoid hardcoded Assets hierarchy position
+            // Store asset inside RuntimeChangesSaver folder
+            // store asset inside RuntimeChangesSaver folder, avoid hardcoded Assets path
             string runtimeFolder = GetRuntimeChangesSaverRootFolder();
             string soFolder = runtimeFolder + "/Scriptable_Objects";
 

@@ -108,8 +108,7 @@ namespace RuntimeChangesSaver.Editor
                 }
                 else if (Application.isPlaying)
                 {
-                    // No matching TransformChange entry in store
-                    // Stored snapshots usage in play mode as original state before changes
+                    // No matching TransformChange entry in store; use stored snapshot as original state
 
                     var originalSnapshot = ChangesTracker.GetSnapshot(go);
 
@@ -118,7 +117,8 @@ namespace RuntimeChangesSaver.Editor
 
                         if (originalSnapshot.isRectTransform && liveComponent is RectTransform)
                         {
-                            // AddComponent<RectTransform> automatic replacement of normal Transform
+                            // AddComponent<RectTransform> replaces default Transform automatically
+
                             snapshotComponent = snapshotGO.AddComponent<RectTransform>();
                         }
                         else
@@ -126,7 +126,8 @@ namespace RuntimeChangesSaver.Editor
                             snapshotComponent = snapshotGO.transform;
                         }
 
-                        // Values from snapshot applied to component
+                        // Apply snapshot values to component
+
                         if (snapshotComponent is RectTransform snapshotRT)
                         {
                             snapshotRT.anchoredPosition = originalSnapshot.anchoredPosition;
@@ -143,7 +144,6 @@ namespace RuntimeChangesSaver.Editor
                         snapshotComponent.transform.localRotation = originalSnapshot.rotation;
                         snapshotComponent.transform.localScale = originalSnapshot.scale;
 
-
                         SerializedObject so = new SerializedObject(snapshotComponent);
                         so.Update();
                     }
@@ -158,8 +158,7 @@ namespace RuntimeChangesSaver.Editor
 
                 if (Application.isPlaying)
                 {
-                    // Play mode lookup analogous to transforms
-                    // Matching entry search in ComponentChangesStore for already accepted overrides
+                    // Play mode lookup, search ComponentChangesStore for accepted overrides
 
                     ComponentChangesStore.ComponentChange match = null;
                     var compStore = ComponentChangesStore.LoadExisting();
@@ -226,7 +225,7 @@ namespace RuntimeChangesSaver.Editor
                     }
                     else
                     {
-                        // ComponentSnapshot usage fallback when no store entry found
+                        // Fallback: use ComponentSnapshot when no store entry
 
                         string compKey = ChangesTracker.GetComponentKey(liveComponent);
                         var snapshot = ChangesTracker.GetComponentSnapshot(go, compKey);
@@ -257,8 +256,7 @@ namespace RuntimeChangesSaver.Editor
                 }
                 else
                 {
-                    // Edit mode usage (e.g. browser)
-                    // Original component values retrieval from ComponentChangesStore
+                    // Edit mode (e.g. browser): read original values from ComponentChangesStore
 
                     var compStore = ComponentChangesStore.LoadExisting();
                     ComponentChangesStore.ComponentChange match = null;
