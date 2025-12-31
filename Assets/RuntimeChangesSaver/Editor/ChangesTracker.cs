@@ -283,7 +283,7 @@ namespace RuntimeChangesSaver.Editor
                 // Nochmalige Prüfung zur Sicherheit vor dem Öffnen
                 if (isProcessingPlayExitPopups || Application.isPlaying) return;
 
-                Debug.Log("[PlayOverrides] Alles stabil, öffne Popups...");
+                Debug.Log("[PlayOverrides] All stable, opening popups...");
                 HandleApplyChangesFromStoreOnPlayExit();
             };
         }
@@ -996,8 +996,8 @@ namespace RuntimeChangesSaver.Editor
             // Wenn wir nicht in der Zielszene sind, fragen ob wir wechseln wollen
             if (!string.Equals(activePath, currentPath, StringComparison.OrdinalIgnoreCase))
             {
-                bool switchScene = EditorUtility.DisplayDialog("Szenenwechsel", 
-                    $"Zu Szene wechseln?\n\n{currentPath}", "Ja", "Rest verwerfen");
+                bool switchScene = EditorUtility.DisplayDialog("Scene Switch", 
+                    $"Switch to scene?\n\n{currentPath}", "Yes", "Discard remaining");
 
                 if (switchScene)
                 {
@@ -1016,8 +1016,8 @@ namespace RuntimeChangesSaver.Editor
             }
 
             // Wenn wir in der richtigen Szene sind: Änderungen anwenden?
-            string msg = $"Play Mode Overrides für Szene anwenden?\n\n{currentPath}";
-            if (EditorUtility.DisplayDialog("Änderungen anwenden", msg, "Anwenden", "Verwerfen"))
+            string msg = $"Apply play mode overrides for scene?\n\n{currentPath}";
+            if (EditorUtility.DisplayDialog("Apply Overrides", msg, "Apply", "Discard"))
             {
                 ApplyChangesFromStoreToEditModeForScene(currentPath, tStore, cStore);
                 
@@ -1039,7 +1039,7 @@ namespace RuntimeChangesSaver.Editor
             string currentPath = NormalizeScenePath(SceneManager.GetActiveScene().path);
             if (!string.IsNullOrEmpty(startPath) && !string.Equals(currentPath, startPath, StringComparison.OrdinalIgnoreCase))
             {
-                if (EditorUtility.DisplayDialog("Zurück zur Startszene?", $"Möchtest du zurück zu:\n\n{startPath}", "Ja", "Nein"))
+                if (EditorUtility.DisplayDialog("Return to start scene?", $"Do you want to return to:\n\n{startPath}", "Yes", "No"))
                 {
                     EditorSceneManager.SaveOpenScenes();
                     EditorSceneManager.OpenScene(startPath, OpenSceneMode.Single);
@@ -1433,7 +1433,6 @@ namespace RuntimeChangesSaver.Editor
 
             string key = GetGameObjectKey(go);
             bool found = snapshots.TryGetValue(key, out var snap);
-            //Debug.Log($"[TransformDebug][Tracker.GetSnapshot] GO='{go.name}', Key='{key}', Found={found}");
             return found ? snap : null;
         }
 
