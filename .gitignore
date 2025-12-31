@@ -16,3 +16,4 @@ Assets/*
 
 Assets/RuntimeChangesSaver/Skripts/PlayModeTransformChangesStore.asset
 Assets/RuntimeChangesSaver/Skripts/PlayModeTransformChangesStore.asset.meta
+/Assets/RuntimeChangesSaver/Scriptable_Objects/*
