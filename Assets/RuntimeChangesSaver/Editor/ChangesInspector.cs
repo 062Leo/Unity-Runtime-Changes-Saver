@@ -32,7 +32,7 @@ namespace RuntimeChangesSaver.Editor
             if (go == null)
                 return;
 
-            // changed components presence check
+            // check for changed components
             var changedComponents = ChangesTracker.GetChangedComponents(go);
             bool hasChanges = changedComponents.Count > 0;
 

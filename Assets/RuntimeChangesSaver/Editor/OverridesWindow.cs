@@ -29,8 +29,7 @@ namespace RuntimeChangesSaver.Editor
 
         public override void OnGUI(Rect rect)
         {
-            // Header layout
-
+            // Layout
             Rect headerRect = new Rect(rect.x, rect.y, rect.width, HeaderHeight);
             DrawHeader(headerRect);
 
@@ -41,14 +40,12 @@ namespace RuntimeChangesSaver.Editor
                 return;
             }
 
-            // Scrollable list
-
+            // List
             float listHeight = rect.height - HeaderHeight - FooterHeight;
             Rect listRect = new Rect(rect.x, rect.y + HeaderHeight, rect.width, listHeight);
             DrawComponentList(listRect);
 
-            // Footer buttons
-
+            // Footer
             Rect footerRect = new Rect(rect.x, rect.y + HeaderHeight + listHeight, rect.width, FooterHeight);
             DrawFooter(footerRect);
         }
@@ -93,7 +90,6 @@ namespace RuntimeChangesSaver.Editor
         void DrawFooter(Rect rect)
         {
             // Background
-
             if (Event.current.type == EventType.Repaint)
             {
                 Color bgColor = EditorGUIUtility.isProSkin
@@ -102,8 +98,7 @@ namespace RuntimeChangesSaver.Editor
                 EditorGUI.DrawRect(rect, bgColor);
             }
 
-            // Buttons layout
-
+            // Buttons
             float buttonWidth = 120f;
             float buttonHeight = 30f;
             float spacing = 10f;
@@ -131,9 +126,7 @@ namespace RuntimeChangesSaver.Editor
 
         void RevertAllChanges()
         {
-            // Transform revert
-            // Non-transform revert
-
+            // Revert components
             var originalSnapshot = ChangesTracker.GetSnapshot(targetGO);
 
             if (originalSnapshot != null)
@@ -141,8 +134,7 @@ namespace RuntimeChangesSaver.Editor
                 var transform = targetGO.transform;
                 var rt = transform as RectTransform;
 
-                // Transform properties revert
-
+                // Revert transform
                 transform.localPosition = originalSnapshot.position;
                 transform.localRotation = originalSnapshot.rotation;
                 transform.localScale = originalSnapshot.scale;
@@ -158,12 +150,9 @@ namespace RuntimeChangesSaver.Editor
                     rt.offsetMin = originalSnapshot.offsetMin;
                     rt.offsetMax = originalSnapshot.offsetMax;
                 }
-
-                //Debug.Log($"[TransformDebug][OverridesWindow.RevertAll] GO='{targetGO.name}', originalPos={originalSnapshot.position}, originalRot={originalSnapshot.rotation.eulerAngles}, originalScale={originalSnapshot.scale}, isRect={originalSnapshot.isRectTransform}");
             }
 
-            // Other components revert
-
+            // Revert other components
             foreach (var comp in changedComponents)
             {
                 if (comp is Transform) continue;
@@ -176,20 +165,14 @@ namespace RuntimeChangesSaver.Editor
                     RevertComponent(comp, snapshot);
                 }
             }
-
-            //Debug.Log($"[TransformDebug][OverridesWindow.RevertAll] Completed for GO='{targetGO.name}'");
         }
 
         void ApplyAllChanges()
         {
-            // Transform acceptance
-            // Non-transform acceptance
-
+            // Accept changes
             bool hasTransformChange = false;
             foreach (var comp in changedComponents)
             {
-                // ReSharper disable once ConditionIsAlwaysTrueOrFalse (analysis hint only)
-
                 if (comp is Transform or RectTransform)
                 {
                     hasTransformChange = true;

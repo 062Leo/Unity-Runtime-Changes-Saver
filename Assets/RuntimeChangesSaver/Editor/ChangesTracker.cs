@@ -54,12 +54,12 @@ namespace RuntimeChangesSaver.Editor
 
         private static void OnEditorUpdate()
         {
-            // capture requirement check for first play mode frame
+            // first-frame capture check in play mode
             if (!Application.isPlaying || snapshots.Count != 0) return;
             bool needsCapture = EditorPrefs.GetBool(PREFS_KEY, false);
             if (!needsCapture) return;
             EditorPrefs.DeleteKey(PREFS_KEY);
-            // delay one frame so scene becomes ready
+            // delay one frame so scene is fully loaded
             EditorApplication.delayCall += CaptureSnapshotsInPlayMode;
         }
 
@@ -69,8 +69,7 @@ namespace RuntimeChangesSaver.Editor
             switch (state)
             {
                 case PlayModeStateChange.ExitingEditMode:
-                    // clear persistent stores when entering play mode
-                    // ensure overrides only from current session
+                    // clear stores on play enter, session-only overrides
                     var transformStoreOnEnterPlay = TransformChangesStore.LoadExisting();
                     if (transformStoreOnEnterPlay != null)
                     {
@@ -83,8 +82,7 @@ namespace RuntimeChangesSaver.Editor
                         componentStoreOnEnterPlay.Clear();
                     }
 
-                    // Startszene merken, um nach Verlassen des Play Modes zu wissen,
-                    // wann Unity vollständig zur Ausgangsszene zurückgekehrt ist.
+                    // remember start scene for post-play apply flow
                     var startScene = SceneManager.GetActiveScene();
                     startScenePathAtPlayEnter = startScene.IsValid() ? startScene.path : null;
                     Debug.Log($"[PlayOverrides][ExitingEditMode] startScene='{startScene.name}', path='{startScenePathAtPlayEnter}'");
@@ -95,7 +93,7 @@ namespace RuntimeChangesSaver.Editor
                     break;
 
                 case PlayModeStateChange.EnteredPlayMode:
-                    // schedule snapshot capture for next frame when none exist
+                    // schedule snapshot capture next frame when none exist
                     if (snapshots.Count == 0)
                     {
                         EditorPrefs.SetBool(PREFS_KEY, true);
@@ -104,28 +102,21 @@ namespace RuntimeChangesSaver.Editor
 
                 case PlayModeStateChange.EnteredEditMode:
                     EditorPrefs.DeleteKey(PREFS_KEY);
-                    // Play-Modus ist beendet, Unity ist wieder im Edit Mode.
-                    // Wie im SceneWorkflowEditor starten wir den Folge-Flow nur,
-                    // wenn die aktive Szene unserer gemerkten Startszene entspricht.
+                    // back in edit mode; only start follow-up flow in original start scene
                     var activeAfterPlay = SceneManager.GetActiveScene();
-                    // Fallback: wenn wir aus irgendeinem Grund keine Startszene
-                    // beim Verlassen des Edit Modes gemerkt haben (z.B. Szene
-                    // wird nicht neu geladen), verwenden wir die aktuell aktive
-                    // Szene als Startszene.
+                    // fallback: if no stored start scene, use current active scene
                     if (string.IsNullOrEmpty(startScenePathAtPlayEnter))
                     {
                         startScenePathAtPlayEnter = activeAfterPlay.IsValid() ? activeAfterPlay.path : null;
                         Debug.Log($"[PlayOverrides][EnteredEditMode] Fallback startScenePathAtPlayEnter='{startScenePathAtPlayEnter}'");
                     }
 
-                    Debug.Log($"[PlayOverrides][EnteredEditMode] startScenePathAtPlayEnter='{startScenePathAtPlayEnter}'");
+                    Debug.Log($"[PlayOverrides][EnteredEditMode] startScenePathAtPlayEnter='{startScenePathAtPlayEnter}'"); // log stored start scene
 
                     var activePathNow = activeAfterPlay.IsValid() ? NormalizeScenePath(activeAfterPlay.path) : string.Empty;
                     var startPathNow = NormalizeScenePath(startScenePathAtPlayEnter);
 
-                    // 1:1 wie SceneWorkflowEditor: nur wenn wir im Edit Mode sind
-                    // UND in der erwarteten Szene stehen, starten wir den
-                    // nachgelagerten EditorApplication.delayCall-Flow.
+                    // only start delayed apply flow when active scene matches start scene
                     if (!string.IsNullOrEmpty(startPathNow) &&
                         string.Equals(activePathNow, startPathNow, StringComparison.OrdinalIgnoreCase))
                     {
@@ -254,33 +245,28 @@ namespace RuntimeChangesSaver.Editor
         }
 
         /// <summary>
-        /// Startpunkt für den Play-Exit-Apply-Flow, angelehnt an SceneWorkflowEditor:
-        /// wartet per delayCall, bis der Editor nicht mehr kompiliert/updatet und
-        /// die ursprüngliche Startszene wieder aktiv ist, bevor HandleApplyChangesFromStoreOnPlayExit
-        /// einmalig aufgerufen wird.
+        /// Play-exit apply flow entry: wait until editor stable and start scene active, then run apply once.
         /// </summary>
         private static void TriggerApplyFlowAfterPlayExit()
         {
-            // Niemals im Play Mode ausführen
+            // never run in play mode
             if (Application.isPlaying) return;
 
             if (isProcessingPlayExitPopups) return;
 
-            // 1. Sicherheitscheck: Ist die Szene wirklich schon "da"?
+            // safety check: scene loaded and editor idle
             var activeScene = SceneManager.GetActiveScene();
             if (!activeScene.isLoaded || EditorApplication.isCompiling || EditorApplication.isUpdating)
             {
-                // Wenn nicht, reihen wir uns wieder hinten an
+                // reschedule until scene and editor are ready
                 EditorApplication.delayCall += TriggerApplyFlowAfterPlayExit;
                 return;
             }
 
-            // 2. DER ENTSCHEIDENDE UNTERSCHIED: Der "Double Jump"
-            // Wir verzögern HIER noch einmal explizit, damit die Hierarchy 
-            // und das Rendering Zeit für einen kompletten Frame haben.
+            // second delay: extra frame for hierarchy and rendering (double jump)
             EditorApplication.delayCall += () => 
             {
-                // Nochmalige Prüfung zur Sicherheit vor dem Öffnen
+                // final safety check before opening popups
                 if (isProcessingPlayExitPopups || Application.isPlaying) return;
 
                 Debug.Log("[PlayOverrides] All stable, opening popups...");

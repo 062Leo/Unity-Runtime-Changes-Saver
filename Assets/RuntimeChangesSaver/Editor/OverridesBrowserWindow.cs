@@ -50,7 +50,7 @@ namespace RuntimeChangesSaver.Editor
 
             if (Application.isPlaying)
             {
-                // play mode change detection via in-memory snapshots
+                // play mode changes from in-memory snapshots
                 for (int i = 0; i < sceneCount; i++)
                 {
                     Scene scene = SceneManager.GetSceneAt(i);
@@ -72,7 +72,7 @@ namespace RuntimeChangesSaver.Editor
                     }
                 }
 
-                // show accepted overrides from ScriptableObject stores in play mode
+                // accepted overrides from ScriptableObject stores in play mode
 
                 var transformStore = TransformChangesStore.LoadExisting();
                 if (transformStore != null)
@@ -156,7 +156,7 @@ namespace RuntimeChangesSaver.Editor
             }
             else
             {
-                // edit mode: persistent ScriptableObject stores, latest accepted changes
+                // edit mode: persistent stores with last accepted changes
                 var sceneMap = new Dictionary<Scene, Dictionary<GameObject, GameObjectEntry>>();
 
                 var transformStore = TransformChangesStore.LoadExisting();

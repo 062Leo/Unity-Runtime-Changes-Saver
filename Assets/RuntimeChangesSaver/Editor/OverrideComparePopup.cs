@@ -712,9 +712,6 @@ namespace RuntimeChangesSaver.Editor
 
             targetSO.ApplyModifiedProperties();
 
-            // Im Play Mode zusätzlich die Baseline im PlayModeChangesTracker
-            // für dieses Objekt/diese Komponente aktualisieren, damit
-            // GetChangedComponents sie nicht weiter als "geändert" meldet.
             if (Application.isPlaying && liveComponent != null)
             {
                 if (liveComponent is Transform or RectTransform)
@@ -777,7 +774,6 @@ namespace RuntimeChangesSaver.Editor
                 }
             }
 
-            // Nach einem erfolgreichen Revert den Browser aktualisieren, falls er geöffnet ist.
             RefreshBrowserIfOpen();
         }
 

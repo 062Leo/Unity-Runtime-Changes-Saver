@@ -76,8 +76,8 @@ namespace RuntimeChangesSaver.Editor
 
         private static string GetRuntimeChangesSaverRootFolder()
         {
-            // Locate script on disk
-            // Search for RuntimeChangesSaver folder
+            // • Locate script asset
+            // • Search for RuntimeChangesSaver folder
 
             string[] scriptGuids = AssetDatabase.FindAssets("TransformChangesStore t:Script");
 
@@ -88,7 +88,7 @@ namespace RuntimeChangesSaver.Editor
                 {
                     string dir = Path.GetDirectoryName(scriptPath)?.Replace("\\", "/");
 
-                    // Walk up from script folder until RuntimeChangesSaver found or Assets root reached
+                    // • Walk up until RuntimeChangesSaver or Assets root
 
                     while (!string.IsNullOrEmpty(dir) && dir.StartsWith("Assets"))
                     {
@@ -105,19 +105,20 @@ namespace RuntimeChangesSaver.Editor
                         dir = parent.Replace("\\", "/");
                     }
 
-                    // Fallback to script folder
+                    // • Fallback: script folder
+
                     return Path.GetDirectoryName(scriptPath)?.Replace("\\", "/");
                 }
             }
 
-            // Fallback to Assets root
+            // • Fallback: Assets root
             return "Assets";
         }
 
         private static string GetDefaultAssetPath()
         {
-            // Store asset inside RuntimeChangesSaver folder
-            // Avoid hardcoded Assets hierarchy position
+            // • Asset inside RuntimeChangesSaver/Scriptable_Objects
+            // • Avoid hardcoded Assets hierarchy
 
             string runtimeFolder = GetRuntimeChangesSaverRootFolder();
             string soFolder = runtimeFolder + "/Scriptable_Objects";
@@ -128,6 +129,7 @@ namespace RuntimeChangesSaver.Editor
             }
 
             string assetPath = Path.Combine(soFolder, "TransformChangesStore.asset");
+
             return assetPath.Replace("\\", "/");
         }
 
