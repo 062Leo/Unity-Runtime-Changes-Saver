@@ -10,16 +10,17 @@ namespace RuntimeChangesSaver.Editor
         private Component snapshotComponent;
         private UnityEditor.Editor leftEditor;
         private UnityEditor.Editor rightEditor;
-        private Vector2 leftScroll;
-        private Vector2 rightScroll;
+        
+        // Gemeinsamer Scroll-Wert (0 bis 1)
+        private float scrollNormalized = 0f;
+        private float leftMaxScroll = 0f;
+        private float rightMaxScroll = 0f;
 
         private const float MinWidth = 350f;
         private const float HeaderHeight = 24f;
         private const float FooterHeight = 40f;
-        private float cachedHeight = -1f;
-        private bool isDragging;
-        private Vector2 dragStartMouse;
-        private Rect dragStartWindow;
+        private const float FixedWindowHeight = 400f; // Feste Fensterhöhe
+        private float scrollVelocity = 5f;
 
         public OverrideComparePopup(Component component)
         {
@@ -457,80 +458,98 @@ namespace RuntimeChangesSaver.Editor
 
         public override Vector2 GetWindowSize()
         {
-            if (cachedHeight < 0f)
-            {
-                cachedHeight = EstimateInspectorHeight();
-            }
-
-            return new Vector2(MinWidth * 2 + 6, cachedHeight + FooterHeight);
+            return new Vector2(MinWidth * 2 + 6, FixedWindowHeight);
         }
 
         public override void OnGUI(Rect rect)
+{
+    if (leftEditor == null || rightEditor == null)
+    {
+        EditorGUILayout.HelpBox("Failed to create editors", MessageType.Error);
+        return;
+    }
+
+    // Prüfen, ob Scrollen nötig ist
+    bool needsScrolling = leftMaxScroll > 0 || rightMaxScroll > 0;
+
+    // Mausrad nur verarbeiten, wenn Scrollen nötig
+    if (needsScrolling && rect.Contains(Event.current.mousePosition))
+    {
+        if (Event.current.type == EventType.ScrollWheel)
         {
-            if (leftEditor == null || rightEditor == null)
+            scrollNormalized = Mathf.Clamp01(scrollNormalized + Event.current.delta.y * 0.05f);
+            Event.current.Use();
+        }
+    }
+
+    // Wenn nicht gescrollt werden kann, Reset auf 0
+    if (!needsScrolling) scrollNormalized = 0f;
+
+    float scrollbarWidth = needsScrolling ? 15f : 0f;
+    float columnWidth = (rect.width - scrollbarWidth - 6) * 0.5f;
+    float contentHeight = rect.height - FooterHeight - HeaderHeight;
+
+    // Header
+    DrawColumnHeader(new Rect(rect.x, rect.y, columnWidth, HeaderHeight), leftEditor.target, "Original");
+    DrawColumnHeader(new Rect(rect.x + columnWidth + 6, rect.y, columnWidth, HeaderHeight), rightEditor.target, "Play Mode");
+
+    Rect contentRect = new Rect(rect.x, rect.y + HeaderHeight, rect.width, contentHeight);
+    
+    GUILayout.BeginArea(contentRect);
+    GUILayout.BeginHorizontal();
+
+    // Spalten
+    DrawSynchronizedColumn(columnWidth, contentHeight, leftEditor, scrollNormalized, ref leftMaxScroll, false);
+    DrawSeparator(new Rect(columnWidth, 0, 2, contentHeight));
+    DrawSynchronizedColumn(columnWidth, contentHeight, rightEditor, scrollNormalized, ref rightMaxScroll, true);
+
+    // Scrollbar nur zeichnen, wenn nötig
+    if (needsScrolling)
+    {
+        Rect scrollbarRect = new Rect(rect.width - 15, 0, 15, contentHeight);
+        scrollNormalized = GUI.VerticalScrollbar(scrollbarRect, scrollNormalized, 0.1f, 0f, 1.0f);
+    }
+
+    GUILayout.EndHorizontal();
+    GUILayout.EndArea();
+
+    DrawFooter(new Rect(rect.x, rect.y + rect.height - FooterHeight, rect.width, FooterHeight));
+}
+        void DrawSynchronizedColumn(float width, float height, UnityEditor.Editor editor, float scrollValue, ref float maxScroll, bool editable)
+        {
+            // Bereich für diese Spalte
+            Rect container = EditorGUILayout.BeginVertical(GUILayout.Width(width), GUILayout.Height(height));
+            
+            // Berechnung des tatsächlichen Offsets basierend auf der dynamischen Höhe
+            float currentOffset = scrollValue * maxScroll;
+            
+            Vector2 scrollPos = new Vector2(0, currentOffset);
+            
+            // ScrollView ohne sichtbare Scrollbars (da wir die Logik steuern)
+            scrollPos = GUILayout.BeginScrollView(scrollPos, GUIStyle.none, GUIStyle.none, GUILayout.Height(height));
+
+            GUI.enabled = editable;
+            
+            // Inhalt zeichnen
+            if (editor.target is Transform t)
+                DrawTransformInspector(t, editable);
+            else
+                editor.OnInspectorGUI();
+
+            // Hier erfassen wir die tatsächliche Höhe des Inhalts (wichtig für dynamische Listen)
+            if (Event.current.type == EventType.Repaint)
             {
-                EditorGUILayout.HelpBox("Failed to create editors", MessageType.Error);
-                return;
+                Rect lastRect = GUILayoutUtility.GetLastRect();
+                maxScroll = Mathf.Max(0, lastRect.yMax - height);
             }
 
-            float columnWidth = (rect.width - 6) * 0.5f;
-            float contentHeight = rect.height - FooterHeight;
-
-            Rect leftColumn = new Rect(rect.x, rect.y, columnWidth, contentHeight);
-            Rect rightColumn = new Rect(rect.x + columnWidth + 6, rect.y, columnWidth, contentHeight);
-            Rect footerRect = new Rect(rect.x, rect.y + contentHeight, rect.width, FooterHeight);
-
-            HandleWindowDragging(rect);
-
-            DrawColumn(leftColumn, leftEditor, ref leftScroll, "Original", false);
-            DrawSeparator(new Rect(rect.x + columnWidth, rect.y, 6, contentHeight));
-            DrawColumn(rightColumn, rightEditor, ref rightScroll, "Play Mode", true);
-
-            DrawFooter(footerRect);
+            GUI.enabled = true;
+            GUILayout.EndScrollView();
+            EditorGUILayout.EndVertical();
         }
 
-        void HandleWindowDragging(Rect windowRect)
-        {
-            if (editorWindow == null)
-                return;
-
-            Rect dragRect = new Rect(windowRect.x, windowRect.y, windowRect.width, HeaderHeight);
-            Event e = Event.current;
-
-            switch (e.type)
-            {
-                case EventType.MouseDown:
-                    if (e.button == 0 && dragRect.Contains(e.mousePosition))
-                    {
-                        isDragging = true;
-                        dragStartMouse = GUIUtility.GUIToScreenPoint(e.mousePosition);
-                        dragStartWindow = editorWindow.position;
-                        e.Use();
-                    }
-                    break;
-
-                case EventType.MouseDrag:
-                    if (isDragging)
-                    {
-                        Vector2 current = GUIUtility.GUIToScreenPoint(e.mousePosition);
-                        Vector2 delta = current - dragStartMouse;
-                        Rect pos = dragStartWindow;
-                        pos.position += delta;
-                        editorWindow.position = pos;
-                        e.Use();
-                    }
-                    break;
-
-                case EventType.MouseUp:
-                    if (isDragging && e.button == 0)
-                    {
-                        isDragging = false;
-                        e.Use();
-                    }
-                    break;
-            }
-        }
-
+        
+ 
         void DrawColumn(Rect columnRect, UnityEditor.Editor editor, ref Vector2 scroll, string title, bool editable)
         {
             // Column header area
