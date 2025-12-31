@@ -88,7 +88,7 @@ namespace RuntimeChangesSaver.Editor
             {
                 bool isTransform = component is Transform;
                 bool isRectTransform = component is RectTransform;
-                Debug.Log($"[TransformDebug][OverridesWindow.RowClick] GO='{targetGO.name}', Component='{component.GetType().Name}', isTransform={isTransform}, isRectTransform={isRectTransform}");
+                //Debug.Log($"[TransformDebug][OverridesWindow.RowClick] GO='{targetGO.name}', Component='{component.GetType().Name}', isTransform={isTransform}, isRectTransform={isRectTransform}");
                 PopupWindow.Show(rowRect, new OverrideComparePopup(component));
             }
         }
@@ -162,7 +162,7 @@ namespace RuntimeChangesSaver.Editor
                     rt.offsetMax = originalSnapshot.offsetMax;
                 }
 
-                Debug.Log($"[TransformDebug][OverridesWindow.RevertAll] GO='{targetGO.name}', originalPos={originalSnapshot.position}, originalRot={originalSnapshot.rotation.eulerAngles}, originalScale={originalSnapshot.scale}, isRect={originalSnapshot.isRectTransform}");
+                //Debug.Log($"[TransformDebug][OverridesWindow.RevertAll] GO='{targetGO.name}', originalPos={originalSnapshot.position}, originalRot={originalSnapshot.rotation.eulerAngles}, originalScale={originalSnapshot.scale}, isRect={originalSnapshot.isRectTransform}");
             }
 
             // Other components revert
@@ -180,7 +180,7 @@ namespace RuntimeChangesSaver.Editor
                 }
             }
 
-            Debug.Log($"[TransformDebug][OverridesWindow.RevertAll] Completed for GO='{targetGO.name}'");
+            //Debug.Log($"[TransformDebug][OverridesWindow.RevertAll] Completed for GO='{targetGO.name}'");
         }
 
         void ApplyAllChanges()
@@ -215,7 +215,7 @@ namespace RuntimeChangesSaver.Editor
                 ChangesTracker.AcceptComponentChanges(comp);
             }
 
-            Debug.Log($"[TransformDebug][OverridesWindow.ApplyAll] Accepted all changes on GO='{targetGO.name}' (will be applied when exiting play mode)");
+            //Debug.Log($"[TransformDebug][OverridesWindow.ApplyAll] Accepted all changes on GO='{targetGO.name}' (will be applied when exiting play mode)");
         }
 
         void RevertComponent(Component comp, ComponentSnapshot snapshot)

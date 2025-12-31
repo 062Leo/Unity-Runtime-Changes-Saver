@@ -30,7 +30,7 @@ namespace RuntimeChangesSaver.Editor
         void CreateSnapshotAndEditors()
         {
             var go = liveComponent.gameObject;
-            Debug.Log($"[TransformDebug][ComparePopup.Create] LiveComponent='{liveComponent.GetType().Name}', GO='{go.name}'");
+            //Debug.Log($"[TransformDebug][ComparePopup.Create] LiveComponent='{liveComponent.GetType().Name}', GO='{go.name}'");
             snapshotGO = new GameObject("SnapshotTransform")
             {
                 hideFlags = HideFlags.HideAndDontSave
@@ -106,7 +106,7 @@ namespace RuntimeChangesSaver.Editor
                     SerializedObject so = new SerializedObject(snapshotComponent);
                     so.Update();
 
-                    Debug.Log($"[TransformDebug][ComparePopup.Create] Baseline from TransformStore for GO='{go.name}', useOriginal={useOriginal}, pos={basePos}, rot={baseRot.eulerAngles}, scale={baseScale}");
+                    //Debug.Log($"[TransformDebug][ComparePopup.Create] Baseline from TransformStore for GO='{go.name}', useOriginal={useOriginal}, pos={basePos}, rot={baseRot.eulerAngles}, scale={baseScale}");
                 }
                 else if (Application.isPlaying)
                 {
@@ -117,7 +117,7 @@ namespace RuntimeChangesSaver.Editor
 
                     if (originalSnapshot != null)
                     {
-                        Debug.Log($"[TransformDebug][ComparePopup.Create] Original snapshot FOUND for GO='{go.name}'. isRect={originalSnapshot.isRectTransform}, pos={originalSnapshot.position}, rot={originalSnapshot.rotation.eulerAngles}, scale={originalSnapshot.scale}");
+                        //Debug.Log($"[TransformDebug][ComparePopup.Create] Original snapshot FOUND for GO='{go.name}'. isRect={originalSnapshot.isRectTransform}, pos={originalSnapshot.position}, rot={originalSnapshot.rotation.eulerAngles}, scale={originalSnapshot.scale}");
 
                         if (originalSnapshot.isRectTransform && liveComponent is RectTransform)
                         {
@@ -147,19 +147,19 @@ namespace RuntimeChangesSaver.Editor
                         snapshotComponent.transform.localScale = originalSnapshot.scale;
 
                         var t = snapshotComponent.transform;
-                        Debug.Log($"[TransformDebug][ComparePopup.Create] Applied basic Transform data to snapshot GO='{snapshotGO.name}': pos={t.localPosition}, rot={t.localRotation.eulerAngles}, scale={t.localScale}");
+                        //Debug.Log($"[TransformDebug][ComparePopup.Create] Applied basic Transform data to snapshot GO='{snapshotGO.name}': pos={t.localPosition}, rot={t.localRotation.eulerAngles}, scale={t.localScale}");
 
                         SerializedObject so = new SerializedObject(snapshotComponent);
                         so.Update();
                     }
                     else
                     {
-                        Debug.Log($"[TransformDebug][ComparePopup.Create] Original snapshot MISSING for GO='{go.name}' (Transform, Play Mode)");
+                        //Debug.Log($"[TransformDebug][ComparePopup.Create] Original snapshot MISSING for GO='{go.name}' (Transform, Play Mode)");
                     }
                 }
                 else
                 {
-                    Debug.Log($"[TransformDebug][ComparePopup.Create] No TransformChange in store for GO='{go.name}' (Edit Mode, no baseline available)");
+                    //Debug.Log($"[TransformDebug][ComparePopup.Create] No TransformChange in store for GO='{go.name}' (Edit Mode, no baseline available)");
                 }
             }
             else
@@ -344,7 +344,7 @@ namespace RuntimeChangesSaver.Editor
                 var leftTransform = snapshotComponent.transform;
                 var rightTransform = liveComponent?.transform;
 
-                Debug.Log($"[TransformDebug][ComparePopup.EditorsCreated] snapshotComponentType={snapshotComponent.GetType().Name}, liveComponentType={liveComponent.GetType().Name}, leftPos={leftTransform.localPosition}, leftRot={leftTransform.localRotation.eulerAngles}, leftScale={leftTransform.localScale}, rightPos={(rightTransform != null ? rightTransform.localPosition.ToString() : "n/a")}, rightRot={(rightTransform != null ? rightTransform.localRotation.eulerAngles.ToString() : "n/a")}, rightScale={(rightTransform != null ? rightTransform.localScale.ToString() : "n/a")}");
+                //Debug.Log($"[TransformDebug][ComparePopup.EditorsCreated] snapshotComponentType={snapshotComponent.GetType().Name}, liveComponentType={liveComponent.GetType().Name}, leftPos={leftTransform.localPosition}, leftRot={leftTransform.localRotation.eulerAngles}, leftScale={leftTransform.localScale}, rightPos={(rightTransform != null ? rightTransform.localPosition.ToString() : "n/a")}, rightRot={(rightTransform != null ? rightTransform.localRotation.eulerAngles.ToString() : "n/a")}, rightScale={(rightTransform != null ? rightTransform.localScale.ToString() : "n/a")}");
 
                 leftEditor = UnityEditor.Editor.CreateEditor(snapshotComponent);
                 rightEditor = UnityEditor.Editor.CreateEditor(liveComponent);
@@ -747,7 +747,7 @@ namespace RuntimeChangesSaver.Editor
                 }
             }
 
-            Debug.Log($"[TransformDebug][ComparePopup.Revert] Reverted {liveComponent.GetType().Name} to original values");
+            //Debug.Log($"[TransformDebug][ComparePopup.Revert] Reverted {liveComponent.GetType().Name} to original values");
 
             if (liveComponent != null)
             {
@@ -769,7 +769,7 @@ namespace RuntimeChangesSaver.Editor
                             tStore.changes.RemoveAt(index);
                             EditorUtility.SetDirty(tStore);
                             AssetDatabase.SaveAssets();
-                            Debug.Log($"[TransformDebug][ComparePopup.Revert] Removed Transform entry from store for GO='{go.name}'");
+                            //Debug.Log($"[TransformDebug][ComparePopup.Revert] Removed Transform entry from store for GO='{go.name}'");
                         }
                     }
                 }
@@ -794,7 +794,7 @@ namespace RuntimeChangesSaver.Editor
                             cStore.changes.RemoveAt(index);
                             EditorUtility.SetDirty(cStore);
                             AssetDatabase.SaveAssets();
-                            Debug.Log($"[TransformDebug][ComparePopup.Revert] Removed Component entry from store for GO='{go.name}', comp='{liveComponent.GetType().Name}'");
+                            //Debug.Log($"[TransformDebug][ComparePopup.Revert] Removed Component entry from store for GO='{go.name}', comp='{liveComponent.GetType().Name}'");
                         }
                     }
                 }

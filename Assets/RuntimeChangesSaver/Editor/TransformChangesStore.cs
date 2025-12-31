@@ -55,7 +55,7 @@ namespace RuntimeChangesSaver.Editor
             {
                 string path = AssetDatabase.GUIDToAssetPath(guids[0]);
                 var store = AssetDatabase.LoadAssetAtPath<TransformChangesStore>(path);
-                Debug.Log($"[TransformDebug][Store.LoadExisting] Found existing store at '{path}', changeCount={store.changes.Count}");
+                //Debug.Log($"[TransformDebug][Store.LoadExisting] Found existing store at '{path}', changeCount={store.changes.Count}");
                 return store;
             }
 
@@ -75,7 +75,7 @@ namespace RuntimeChangesSaver.Editor
             else
             {
                 string existingPath = AssetDatabase.GetAssetPath(store);
-                Debug.Log($"[TransformDebug][Store.LoadOrCreate] Using existing store at '{existingPath}', changeCount={store.changes.Count}");
+                //Debug.Log($"[TransformDebug][Store.LoadOrCreate] Using existing store at '{existingPath}', changeCount={store.changes.Count}");
             }
             return store;
         }
@@ -141,7 +141,7 @@ namespace RuntimeChangesSaver.Editor
         {
             changes.Clear();
             EditorUtility.SetDirty(this);
-            Debug.Log("[TransformDebug][Store.Clear] Cleared all stored transform changes");
+            //Debug.Log("[TransformDebug][Store.Clear] Cleared all stored transform changes");
         }
     }
 }
