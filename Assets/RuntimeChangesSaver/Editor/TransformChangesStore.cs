@@ -72,11 +72,6 @@ namespace RuntimeChangesSaver.Editor
                 AssetDatabase.CreateAsset(store, assetPath);
                 AssetDatabase.SaveAssets();
             }
-            else
-            {
-                string existingPath = AssetDatabase.GetAssetPath(store);
-                //Debug.Log($"[TransformDebug][Store.LoadOrCreate] Using existing store at '{existingPath}', changeCount={store.changes.Count}");
-            }
             return store;
         }
 

@@ -34,8 +34,8 @@ namespace RuntimeChangesSaver.Editor
         private static readonly Dictionary<string, Dictionary<string, ComponentSnapshot>> componentSnapshots = new();
 
         private const string PREFS_KEY = "PlayModeChangesTracker_CaptureNeeded";
-        private static string startScenePathAtPlayEnter = null;
-        private static bool isProcessingPlayExitPopups = false;
+        private static string startScenePathAtPlayEnter;
+        private static bool isProcessingPlayExitPopups;
 
         static ChangesTracker()
         {
@@ -944,7 +944,7 @@ namespace RuntimeChangesSaver.Editor
 
         public static void MarkForPersistence(GameObject go)
         {
-            string key = GetGameObjectKey(go);
+            GetGameObjectKey(go);
         }
 
 
@@ -1176,127 +1176,6 @@ namespace RuntimeChangesSaver.Editor
             // angewendeten Änderungen sofort sichtbar werden.
             SceneView.RepaintAll();
             EditorApplication.DirtyHierarchyWindowSorting();
-        }
-
-        private static void ApplyChangesFromStoreToEditMode()
-        {
-            // use TransformChangesStore ScriptableObject for transform changes persistence
-            // provide better survival across domain reloads than static dictionaries
-
-            var store = TransformChangesStore.LoadExisting();
-            if (store != null && store.changes.Count > 0)
-            {
-                foreach (var change in store.changes)
-                {
-                    var scene = SceneManager.GetSceneByPath(change.scenePath);
-                    if (!scene.IsValid())
-                        scene = SceneManager.GetSceneByName(change.scenePath);
-
-                    if (!scene.IsValid())
-                        continue;
-
-                    GameObject go = FindInSceneByPath(scene, change.objectPath);
-                    if (go == null)
-                        continue;
-
-                    Transform t = go.transform;
-                    RectTransform rt = t as RectTransform;
-
-                    Undo.RecordObject(t, "Apply Play Mode Transform Changes");
-
-                    // apply only properties listed in modifiedProperties when set
-                    // otherwise apply all transform values
-                    if (change.modifiedProperties is { Count: > 0 })
-                    {
-                        foreach (var prop in change.modifiedProperties)
-                        {
-                            ApplyPropertyToTransform(t, rt, change, prop);
-                        }
-                    }
-                    else
-                    {
-                        t.localPosition = change.position;
-                        t.localRotation = change.rotation;
-                        t.localScale = change.scale;
-
-                        if (rt != null && change.isRectTransform)
-                        {
-                            rt.anchoredPosition = change.anchoredPosition;
-                            rt.anchoredPosition3D = change.anchoredPosition3D;
-                            rt.anchorMin = change.anchorMin;
-                            rt.anchorMax = change.anchorMax;
-                            rt.pivot = change.pivot;
-                            rt.sizeDelta = change.sizeDelta;
-                            rt.offsetMin = change.offsetMin;
-                            rt.offsetMax = change.offsetMax;
-                        }
-                    }
-
-                    EditorUtility.SetDirty(go);
-                    if (scene.IsValid())
-                    {
-                        EditorSceneManager.MarkSceneDirty(scene);
-                    }
-
-                    //Debug.Log($"[TransformDebug][Tracker.ApplyChanges] Applied Transform changes to GO='{go.name}', scene='{scene.path}'");
-                }
-            }
-
-            // Nicht-Transform-Komponenten über einen separaten Store anwenden
-            var compStore = ComponentChangesStore.LoadExisting();
-            if (compStore != null && compStore.changes.Count > 0)
-            {
-                foreach (var change in compStore.changes)
-                {
-                    var scene = SceneManager.GetSceneByPath(change.scenePath);
-                    if (!scene.IsValid())
-                        scene = SceneManager.GetSceneByName(change.scenePath);
-
-                    if (!scene.IsValid())
-                        continue;
-
-                    GameObject go = FindInSceneByPath(scene, change.objectPath);
-                    if (go == null)
-                        continue;
-
-                    var type = Type.GetType(change.componentType);
-                    if (type == null)
-                        continue;
-
-                    var allComps = go.GetComponents(type);
-                    if (change.componentIndex < 0 || change.componentIndex >= allComps.Length)
-                        continue;
-
-                    var comp = allComps[change.componentIndex];
-                    if (comp == null)
-                        continue;
-
-                    SerializedObject so = new SerializedObject(comp);
-                    Undo.RecordObject(comp, "Apply Play Mode Component Changes");
-
-                    for (int i = 0; i < change.propertyPaths.Count; i++)
-                    {
-                        string path = change.propertyPaths[i];
-                        string value = change.serializedValues[i];
-                        string typeName = change.valueTypes[i];
-
-                        SerializedProperty prop = so.FindProperty(path);
-                        if (prop == null)
-                            continue;
-
-                        ApplySerializedComponentValue(prop, typeName, value);
-                    }
-
-                    so.ApplyModifiedProperties();
-                    EditorUtility.SetDirty(comp);
-                    if (scene.IsValid())
-                    {
-                        EditorSceneManager.MarkSceneDirty(scene);
-                    }
-                }
-            }
-
-            AssetDatabase.SaveAssets();
         }
 
         private static void ApplySerializedComponentValue(SerializedProperty prop, string typeName, string value)

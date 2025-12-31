@@ -28,7 +28,7 @@ namespace RuntimeChangesSaver.Editor
             scale = t.localScale;
 
             RectTransform rt = t as RectTransform;
-            isRectTransform = rt != null;
+            isRectTransform = rt;
 
             if (isRectTransform)
             {

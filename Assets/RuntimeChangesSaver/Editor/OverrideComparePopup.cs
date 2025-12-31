@@ -146,20 +146,10 @@ namespace RuntimeChangesSaver.Editor
                         snapshotComponent.transform.localRotation = originalSnapshot.rotation;
                         snapshotComponent.transform.localScale = originalSnapshot.scale;
 
-                        var t = snapshotComponent.transform;
-                        //Debug.Log($"[TransformDebug][ComparePopup.Create] Applied basic Transform data to snapshot GO='{snapshotGO.name}': pos={t.localPosition}, rot={t.localRotation.eulerAngles}, scale={t.localScale}");
 
                         SerializedObject so = new SerializedObject(snapshotComponent);
                         so.Update();
                     }
-                    else
-                    {
-                        //Debug.Log($"[TransformDebug][ComparePopup.Create] Original snapshot MISSING for GO='{go.name}' (Transform, Play Mode)");
-                    }
-                }
-                else
-                {
-                    //Debug.Log($"[TransformDebug][ComparePopup.Create] No TransformChange in store for GO='{go.name}' (Edit Mode, no baseline available)");
                 }
             }
             else
@@ -339,13 +329,8 @@ namespace RuntimeChangesSaver.Editor
                 }
             }
 
-            if (snapshotComponent != null)
+            if (snapshotComponent)
             {
-                var leftTransform = snapshotComponent.transform;
-                var rightTransform = liveComponent?.transform;
-
-                //Debug.Log($"[TransformDebug][ComparePopup.EditorsCreated] snapshotComponentType={snapshotComponent.GetType().Name}, liveComponentType={liveComponent.GetType().Name}, leftPos={leftTransform.localPosition}, leftRot={leftTransform.localRotation.eulerAngles}, leftScale={leftTransform.localScale}, rightPos={(rightTransform != null ? rightTransform.localPosition.ToString() : "n/a")}, rightRot={(rightTransform != null ? rightTransform.localRotation.eulerAngles.ToString() : "n/a")}, rightScale={(rightTransform != null ? rightTransform.localScale.ToString() : "n/a")}");
-
                 leftEditor = UnityEditor.Editor.CreateEditor(snapshotComponent);
                 rightEditor = UnityEditor.Editor.CreateEditor(liveComponent);
             }

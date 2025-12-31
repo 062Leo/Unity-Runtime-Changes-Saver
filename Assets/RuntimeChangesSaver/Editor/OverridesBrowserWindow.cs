@@ -369,7 +369,7 @@ namespace RuntimeChangesSaver.Editor
 
                 foreach (var entry in entries)
                 {
-                    if (entry.GameObject == null)
+                    if (!entry.GameObject)
                         continue;
 
                     EditorGUILayout.BeginHorizontal();

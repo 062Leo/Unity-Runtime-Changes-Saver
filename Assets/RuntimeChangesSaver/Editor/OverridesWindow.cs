@@ -86,9 +86,6 @@ namespace RuntimeChangesSaver.Editor
 
             if (GUI.Button(labelRect, content, EditorStyles.label))
             {
-                bool isTransform = component is Transform;
-                bool isRectTransform = component is RectTransform;
-                //Debug.Log($"[TransformDebug][OverridesWindow.RowClick] GO='{targetGO.name}', Component='{component.GetType().Name}', isTransform={isTransform}, isRectTransform={isRectTransform}");
                 PopupWindow.Show(rowRect, new OverrideComparePopup(component));
             }
         }
