@@ -972,7 +972,7 @@ namespace RuntimeChangesSaver.Editor
 
             Debug.Log($"[PlayOverrides][HandleApplyChangesFromStoreOnPlayExit] startScenePath='{startScenePath}', orderedScenePaths=[{string.Join(", ", orderedScenePaths)}]");
 
-            // Starte die Kette mit der ersten Szene
+            // Start the chain with the first scene
             ProcessNextSceneInQueue(orderedScenePaths, startScenePath, transformStore, compStore);
         }
 
@@ -993,7 +993,7 @@ namespace RuntimeChangesSaver.Editor
     string activePath = NormalizeScenePath(SceneManager.GetActiveScene().path);
     Debug.Log($"[PlayOverrides][ProcessNextSceneInQueue] activePath='{activePath}', currentPath='{currentPath}'");
 
-    // Wenn wir nicht in der Zielszene sind, fragen ob wir wechseln wollen
+    // If we are not in the target scene, ask if we want to switch
     if (!string.Equals(activePath, currentPath, StringComparison.OrdinalIgnoreCase))
     {
         Debug.Log($"[PlayOverrides][ProcessNextSceneInQueue] Active scene != target. Showing Scene Switch dialog for '{currentPath}'");
@@ -1008,25 +1008,25 @@ namespace RuntimeChangesSaver.Editor
             EditorSceneManager.SaveOpenScenes();
             EditorSceneManager.OpenScene(currentPath, OpenSceneMode.Single);
             
-            // KRITISCH: 4-facher Delay wie beim Apply, weil die Szene Zeit zum Laden UND Rendern braucht
+            // 4-frame delay to make all changes visible
             EditorApplication.delayCall += () => 
             {
                 Debug.Log("[PlayOverrides][ProcessNextSceneInQueue] Delay 1 after scene switch");
-                // Frame 1: Szene wird geladen
+                // 1: Undo system records changes 
                 EditorApplication.delayCall += () => 
                 {
                     Debug.Log("[PlayOverrides][ProcessNextSceneInQueue] Delay 2 after scene switch");
-                    // Frame 2: Assets werden verarbeitet
+                     // 2: Assets saved
                     EditorApplication.delayCall += () => 
                     {
                         Debug.Log("[PlayOverrides][ProcessNextSceneInQueue] Delay 3 after scene switch, repainting SceneView");
-                        // Frame 3: Scene View wird aktualisiert
+                        // 3: Refresh Scene View
                         SceneView.RepaintAll();
                         
                         EditorApplication.delayCall += () => 
                         {
                             Debug.Log("[PlayOverrides][ProcessNextSceneInQueue] Delay 4 after scene switch, continuing queue...");
-                            // Frame 4: Alles ist stabil, jetzt weiter
+                            // 4: All set, proceed to next scene
                             ProcessNextSceneInQueue(new List<string> { currentPath }.Concat(remainingScenes).ToList(), 
                                 startScenePath, tStore, cStore);
                         };
@@ -1043,7 +1043,7 @@ namespace RuntimeChangesSaver.Editor
         }
     }
 
-    // Wenn wir in der richtigen Szene sind: Änderungen anwenden?
+    
     string msg = $"Apply play mode overrides for scene?\n\n{currentPath}";
     Debug.Log($"[PlayOverrides][ProcessNextSceneInQueue] Showing Apply Overrides dialog for '{currentPath}'");
     if (EditorUtility.DisplayDialog("Apply Overrides", msg, "Apply", "Discard"))
@@ -1051,29 +1051,29 @@ namespace RuntimeChangesSaver.Editor
         Debug.Log($"[PlayOverrides][ProcessNextSceneInQueue] User chose APPLY for '{currentPath}'. Calling ApplyChangesFromStoreToEditModeForScene...");
         ApplyChangesFromStoreToEditModeForScene(currentPath, tStore, cStore);
         
-        // KRITISCH: 4-facher Delay damit alle Änderungen sichtbar werden
+        // 4-frame delay to make all changes visible
         EditorApplication.delayCall += () => 
         {
             Debug.Log("[PlayOverrides][ProcessNextSceneInQueue] Apply delay 1 (after ApplyChangesFromStoreToEditModeForScene)");
-            // Frame 1: Undo-System registriert Änderungen
+            // 1: Undo system records changes 
             EditorApplication.delayCall += () => 
             {
                 Debug.Log("[PlayOverrides][ProcessNextSceneInQueue] Apply delay 2 (SaveAssets/Refresh)");
-                // Frame 2: Assets werden persistiert
+                // 2: Assets saved
                 AssetDatabase.SaveAssets();
                 AssetDatabase.Refresh();
                 
                 EditorApplication.delayCall += () => 
                 {
                     Debug.Log("[PlayOverrides][ProcessNextSceneInQueue] Apply delay 3 (RepaintAll/DirtyHierarchy)");
-                    // Frame 3: Scene View wird aktualisiert
+                    // 3: Refresh Scene View
                     SceneView.RepaintAll();
                     EditorApplication.DirtyHierarchyWindowSorting();
                     
                     EditorApplication.delayCall += () => 
                     {
                         Debug.Log("[PlayOverrides][ProcessNextSceneInQueue] Apply delay 4 (continue with remaining scenes)");
-                        // Frame 4: Alles ist stabil, jetzt weiter zur nächsten Scene
+                        // 4: All set, proceed to next scene
                         ProcessNextSceneInQueue(remainingScenes, startScenePath, tStore, cStore);
                     };
                 };
@@ -1308,28 +1308,22 @@ namespace RuntimeChangesSaver.Editor
             }
         }
 
-        // Nimmt die aktuellen Transform-Werte eines GameObjects an (Apply/Apply All im Play Mode):
-        // 1) Baseline-Snapshot wird auf den aktuellen Zustand gesetzt, damit das Objekt aus der
-        //    Changed-Liste verschwindet.
-        // 2) Die aktuellen Werte werden in den ScriptableObject-Store geschrieben, um sie beim
-        //    Verlassen des Play Modes im Edit Mode zu übernehmen.
-        // 3) Zusätzlich werden die ursprünglichen Werte (vor dem ersten Accept) mitgespeichert,
-        //    damit der Browser im Edit Mode diese als "Original" anzeigen kann.
+       
         public static void AcceptTransformChanges(GameObject go)
         {
             if (go == null)
                 return;
 
-            // Ursprünglichen Snapshot sichern, bevor wir die Baseline verschieben.
+            // Save original snapshot before moving the baseline.
             TransformSnapshot original = GetSnapshot(go);
             TransformSnapshot current = new TransformSnapshot(go);
 
             Debug.Log($"[PlayOverrides][AcceptTransformChanges] GO='{go.name}', scenePath='{go.scene.path}', objectPath='{GetGameObjectPath(go.transform)}', hasOriginalSnapshot={(original != null)}");
 
-            // Baseline verschieben: aktueller Zustand wird neuer Snapshot.
+            // Move baseline: current state becomes new snapshot.
             SetSnapshot(go, current);
 
-            // Persistente Speicherung im ScriptableObject (inkl. Originalwerte).
+            // Persistent storage in ScriptableObject (including original values).
             RecordTransformChangeToStore(go, original, current);
         }
 
@@ -1347,7 +1341,7 @@ namespace RuntimeChangesSaver.Editor
             }
             else
             {
-                // Falls kein Original-Snapshot existiert, alle Eigenschaften als geändert markieren.
+                // If no original snapshot exists, mark all properties as changed.
                 modifiedProps = new List<string> { "position", "rotation", "scale" };
                 if (current.isRectTransform)
                 {
@@ -1359,12 +1353,12 @@ namespace RuntimeChangesSaver.Editor
                 }
             }
 
-            // Existierenden Eintrag für dieses Objekt suchen.
+            //Find existing entry for this object.
             var existingIndex = store.changes.FindIndex(c => c.scenePath == scenePath && c.objectPath == objectPath);
 
-            // Originalwerte bestimmen:
-            // - Wenn bereits ein Eintrag mit Originalwerten existiert, diesen beibehalten.
-            // - Andernfalls Original aus dem übergebenen Snapshot ableiten (falls vorhanden).
+            // Original values determine:
+            // - If already an entry with original values exists, keep it.
+            // - Otherwise, derive original from the passed snapshot (if available).
             bool hasOriginal = false;
             Vector3 originalPosition = Vector3.zero;
             Quaternion originalRotation = Quaternion.identity;
