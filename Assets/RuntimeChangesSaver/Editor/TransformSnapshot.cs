@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using UnityEngine;
 
 namespace RuntimeChangesSaver.Editor
@@ -43,7 +43,7 @@ namespace RuntimeChangesSaver.Editor
                 offsetMax = rt.offsetMax;
             }
 
-            Debug.Log($"[TransformDebug][Snapshot.Create] GO='{go.name}', isRect={isRectTransform}, pos={position}, rot={rotation.eulerAngles}, scale={scale}{(isRectTransform ? $", anchoredPos={anchoredPosition}, sizeDelta={sizeDelta}" : string.Empty)}");
+            //Debug.Log($"[TransformDebug][Snapshot.Create] GO='{go.name}', isRect={isRectTransform}, pos={position}, rot={rotation.eulerAngles}, scale={scale}{(isRectTransform ? $", anchoredPos={anchoredPosition}, sizeDelta={sizeDelta}" : string.Empty)}");
         }
     }
 }

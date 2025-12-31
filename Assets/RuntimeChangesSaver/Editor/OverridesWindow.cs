@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
 
@@ -29,7 +29,8 @@ namespace RuntimeChangesSaver.Editor
 
         public override void OnGUI(Rect rect)
         {
-            // Header
+            // Header layout
+
             Rect headerRect = new Rect(rect.x, rect.y, rect.width, HeaderHeight);
             DrawHeader(headerRect);
 
@@ -40,12 +41,14 @@ namespace RuntimeChangesSaver.Editor
                 return;
             }
 
-            // Component list
+            // Scrollable list
+
             float listHeight = rect.height - HeaderHeight - FooterHeight;
             Rect listRect = new Rect(rect.x, rect.y + HeaderHeight, rect.width, listHeight);
             DrawComponentList(listRect);
 
-            // Footer
+            // Footer buttons
+
             Rect footerRect = new Rect(rect.x, rect.y + HeaderHeight + listHeight, rect.width, FooterHeight);
             DrawFooter(footerRect);
         }
@@ -85,14 +88,15 @@ namespace RuntimeChangesSaver.Editor
             {
                 bool isTransform = component is Transform;
                 bool isRectTransform = component is RectTransform;
-                Debug.Log($"[TransformDebug][OverridesWindow.RowClick] GO='{targetGO.name}', Component='{component.GetType().Name}', isTransform={isTransform}, isRectTransform={isRectTransform}");
+                //Debug.Log($"[TransformDebug][OverridesWindow.RowClick] GO='{targetGO.name}', Component='{component.GetType().Name}', isTransform={isTransform}, isRectTransform={isRectTransform}");
                 PopupWindow.Show(rowRect, new OverrideComparePopup(component));
             }
         }
 
         void DrawFooter(Rect rect)
         {
-            // Draw background
+            // Background
+
             if (Event.current.type == EventType.Repaint)
             {
                 Color bgColor = EditorGUIUtility.isProSkin
@@ -101,7 +105,8 @@ namespace RuntimeChangesSaver.Editor
                 EditorGUI.DrawRect(rect, bgColor);
             }
 
-            // Buttons
+            // Buttons layout
+
             float buttonWidth = 120f;
             float buttonHeight = 30f;
             float spacing = 10f;
@@ -129,6 +134,9 @@ namespace RuntimeChangesSaver.Editor
 
         void RevertAllChanges()
         {
+            // Transform revert
+            // Non-transform revert
+
             var originalSnapshot = ChangesTracker.GetSnapshot(targetGO);
 
             if (originalSnapshot != null)
@@ -136,7 +144,8 @@ namespace RuntimeChangesSaver.Editor
                 var transform = targetGO.transform;
                 var rt = transform as RectTransform;
 
-                // Revert transform
+                // Transform properties revert
+
                 transform.localPosition = originalSnapshot.position;
                 transform.localRotation = originalSnapshot.rotation;
                 transform.localScale = originalSnapshot.scale;
@@ -153,10 +162,11 @@ namespace RuntimeChangesSaver.Editor
                     rt.offsetMax = originalSnapshot.offsetMax;
                 }
 
-                Debug.Log($"[TransformDebug][OverridesWindow.RevertAll] GO='{targetGO.name}', originalPos={originalSnapshot.position}, originalRot={originalSnapshot.rotation.eulerAngles}, originalScale={originalSnapshot.scale}, isRect={originalSnapshot.isRectTransform}");
+                //Debug.Log($"[TransformDebug][OverridesWindow.RevertAll] GO='{targetGO.name}', originalPos={originalSnapshot.position}, originalRot={originalSnapshot.rotation.eulerAngles}, originalScale={originalSnapshot.scale}, isRect={originalSnapshot.isRectTransform}");
             }
 
-            // Revert other components
+            // Other components revert
+
             foreach (var comp in changedComponents)
             {
                 if (comp is Transform) continue;
@@ -170,18 +180,19 @@ namespace RuntimeChangesSaver.Editor
                 }
             }
 
-            Debug.Log($"[TransformDebug][OverridesWindow.RevertAll] Completed for GO='{targetGO.name}'");
+            //Debug.Log($"[TransformDebug][OverridesWindow.RevertAll] Completed for GO='{targetGO.name}'");
         }
 
         void ApplyAllChanges()
         {
-            // Transform-Änderungen für dieses GameObject annehmen und für den
-            // Übergang zurück in den Edit Mode persistieren – aber nur, wenn der
-            // Transform tatsächlich als geändert erkannt wurde.
+            // Transform acceptance
+            // Non-transform acceptance
+
             bool hasTransformChange = false;
             foreach (var comp in changedComponents)
             {
-                // ReSharper disable once ConditionIsAlwaysTrueOrFalse
+                // ReSharper disable once ConditionIsAlwaysTrueOrFalse (analysis hint only)
+
                 if (comp is Transform or RectTransform)
                 {
                     hasTransformChange = true;
@@ -194,7 +205,8 @@ namespace RuntimeChangesSaver.Editor
                 ChangesTracker.AcceptTransformChanges(targetGO);
             }
 
-            // Nicht-Transform-Komponenten ebenfalls annehmen
+            // Non-transform acceptance
+
             foreach (var comp in changedComponents)
             {
                 if (comp is null or Transform)
@@ -203,7 +215,7 @@ namespace RuntimeChangesSaver.Editor
                 ChangesTracker.AcceptComponentChanges(comp);
             }
 
-            Debug.Log($"[TransformDebug][OverridesWindow.ApplyAll] Accepted all changes on GO='{targetGO.name}' (will be applied when exiting play mode)");
+            //Debug.Log($"[TransformDebug][OverridesWindow.ApplyAll] Accepted all changes on GO='{targetGO.name}' (will be applied when exiting play mode)");
         }
 
         void RevertComponent(Component comp, ComponentSnapshot snapshot)

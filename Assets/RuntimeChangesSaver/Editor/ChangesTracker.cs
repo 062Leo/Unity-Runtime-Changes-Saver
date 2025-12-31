@@ -1,5 +1,6 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -33,35 +34,43 @@ namespace RuntimeChangesSaver.Editor
         private static readonly Dictionary<string, Dictionary<string, ComponentSnapshot>> componentSnapshots = new();
 
         private const string PREFS_KEY = "PlayModeChangesTracker_CaptureNeeded";
+        private static string startScenePathAtPlayEnter = null;
+        private static bool isProcessingPlayExitPopups = false;
 
         static ChangesTracker()
         {
             EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
             EditorApplication.update += OnEditorUpdate;
+            SceneManager.sceneLoaded += OnSceneLoaded;
+        }
+
+        private static string NormalizeScenePath(string path)
+        {
+            if (string.IsNullOrEmpty(path))
+                return string.Empty;
+
+            return path.Replace('\\', '/').Trim();
         }
 
         private static void OnEditorUpdate()
         {
-            // Check if we need to capture on first play mode frame
-            if (Application.isPlaying && snapshots.Count == 0)
-            {
-                bool needsCapture = EditorPrefs.GetBool(PREFS_KEY, false);
-                if (needsCapture)
-                {
-                    EditorPrefs.DeleteKey(PREFS_KEY);
-                    // Wait one frame for scene to be ready
-                    EditorApplication.delayCall += CaptureSnapshotsInPlayMode;
-                }
-            }
+            // capture requirement check for first play mode frame
+            if (!Application.isPlaying || snapshots.Count != 0) return;
+            bool needsCapture = EditorPrefs.GetBool(PREFS_KEY, false);
+            if (!needsCapture) return;
+            EditorPrefs.DeleteKey(PREFS_KEY);
+            // delay one frame so scene becomes ready
+            EditorApplication.delayCall += CaptureSnapshotsInPlayMode;
         }
 
         private static void OnPlayModeStateChanged(PlayModeStateChange state)
         {
+            Debug.Log($"[PlayOverrides][OnPlayModeStateChanged] state={state}, isPlaying={Application.isPlaying}");
             switch (state)
             {
                 case PlayModeStateChange.ExitingEditMode:
-                    // Beim Start in den Play Mode immer den persistenten Store leeren,
-                    // damit wir nur Änderungen aus der aktuellen Session übernehmen.
+                    // clear persistent stores when entering play mode
+                    // ensure overrides only from current session
                     var transformStoreOnEnterPlay = TransformChangesStore.LoadExisting();
                     if (transformStoreOnEnterPlay != null)
                     {
@@ -74,13 +83,19 @@ namespace RuntimeChangesSaver.Editor
                         componentStoreOnEnterPlay.Clear();
                     }
 
+                    // Startszene merken, um nach Verlassen des Play Modes zu wissen,
+                    // wann Unity vollständig zur Ausgangsszene zurückgekehrt ist.
+                    var startScene = SceneManager.GetActiveScene();
+                    startScenePathAtPlayEnter = startScene.IsValid() ? startScene.path : null;
+                    Debug.Log($"[PlayOverrides][ExitingEditMode] startScene='{startScene.name}', path='{startScenePathAtPlayEnter}'");
+
                     CaptureSnapshotsInEditMode();
-                    // Also set flag in case ExitingEditMode doesn't capture properly
+                    // safety flag in case ExitingEditMode capture fails
                     EditorPrefs.SetBool(PREFS_KEY, snapshots.Count == 0);
                     break;
 
                 case PlayModeStateChange.EnteredPlayMode:
-                    // If no snapshots, schedule capture for next frame
+                    // schedule snapshot capture for next frame when none exist
                     if (snapshots.Count == 0)
                     {
                         EditorPrefs.SetBool(PREFS_KEY, true);
@@ -89,9 +104,188 @@ namespace RuntimeChangesSaver.Editor
 
                 case PlayModeStateChange.EnteredEditMode:
                     EditorPrefs.DeleteKey(PREFS_KEY);
-                    ApplyChangesFromStoreToEditMode();
+                    // Play-Modus ist beendet, Unity ist wieder im Edit Mode.
+                    // Wie im SceneWorkflowEditor starten wir den Folge-Flow nur,
+                    // wenn die aktive Szene unserer gemerkten Startszene entspricht.
+                    var activeAfterPlay = SceneManager.GetActiveScene();
+                    // Fallback: wenn wir aus irgendeinem Grund keine Startszene
+                    // beim Verlassen des Edit Modes gemerkt haben (z.B. Szene
+                    // wird nicht neu geladen), verwenden wir die aktuell aktive
+                    // Szene als Startszene.
+                    if (string.IsNullOrEmpty(startScenePathAtPlayEnter))
+                    {
+                        startScenePathAtPlayEnter = activeAfterPlay.IsValid() ? activeAfterPlay.path : null;
+                        Debug.Log($"[PlayOverrides][EnteredEditMode] Fallback startScenePathAtPlayEnter='{startScenePathAtPlayEnter}'");
+                    }
+
+                    Debug.Log($"[PlayOverrides][EnteredEditMode] startScenePathAtPlayEnter='{startScenePathAtPlayEnter}'");
+
+                    var activePathNow = activeAfterPlay.IsValid() ? NormalizeScenePath(activeAfterPlay.path) : string.Empty;
+                    var startPathNow = NormalizeScenePath(startScenePathAtPlayEnter);
+
+                    // 1:1 wie SceneWorkflowEditor: nur wenn wir im Edit Mode sind
+                    // UND in der erwarteten Szene stehen, starten wir den
+                    // nachgelagerten EditorApplication.delayCall-Flow.
+                    if (!string.IsNullOrEmpty(startPathNow) &&
+                        string.Equals(activePathNow, startPathNow, StringComparison.OrdinalIgnoreCase))
+                    {
+                        EditorApplication.delayCall += TriggerApplyFlowAfterPlayExit;
+                    }
+                    else
+                    {
+                        Debug.Log($"[PlayOverrides][EnteredEditMode] Active scene '{activePathNow}' != start scene '{startPathNow}', not starting apply flow");
+                    }
                     break;
             }
+        }
+
+        private static void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+        {
+            if (!Application.isPlaying)
+                return;
+
+            if (!scene.isLoaded)
+                return;
+
+            ApplyRuntimeOverridesForScene(scene);
+
+            GameObject[] roots = scene.GetRootGameObjects();
+            foreach (GameObject rootGO in roots)
+            {
+                CaptureGameObjectRecursive(rootGO);
+            }
+        }
+
+        private static void ApplyRuntimeOverridesForScene(Scene scene)
+        {
+            var transformStore = TransformChangesStore.LoadExisting();
+            if (transformStore != null && transformStore.changes.Count > 0)
+            {
+                foreach (var change in transformStore.changes)
+                {
+                    var changeScene = SceneManager.GetSceneByPath(change.scenePath);
+                    if (!changeScene.IsValid())
+                        changeScene = SceneManager.GetSceneByName(change.scenePath);
+
+                    if (!changeScene.IsValid() || changeScene != scene)
+                        continue;
+
+                    GameObject go = FindInSceneByPath(scene, change.objectPath);
+                    if (go == null)
+                        continue;
+
+                    Transform t = go.transform;
+                    RectTransform rt = t as RectTransform;
+
+                    if (change.modifiedProperties is { Count: > 0 })
+                    {
+                        foreach (var prop in change.modifiedProperties)
+                        {
+                            ApplyPropertyToTransform(t, rt, change, prop);
+                        }
+                    }
+                    else
+                    {
+                        t.localPosition = change.position;
+                        t.localRotation = change.rotation;
+                        t.localScale = change.scale;
+
+                        if (rt != null && change.isRectTransform)
+                        {
+                            rt.anchoredPosition = change.anchoredPosition;
+                            rt.anchoredPosition3D = change.anchoredPosition3D;
+                            rt.anchorMin = change.anchorMin;
+                            rt.anchorMax = change.anchorMax;
+                            rt.pivot = change.pivot;
+                            rt.sizeDelta = change.sizeDelta;
+                            rt.offsetMin = change.offsetMin;
+                            rt.offsetMax = change.offsetMax;
+                        }
+                    }
+                }
+            }
+
+            var compStore = ComponentChangesStore.LoadExisting();
+            if (compStore != null && compStore.changes.Count > 0)
+            {
+                foreach (var change in compStore.changes)
+                {
+                    var changeScene = SceneManager.GetSceneByPath(change.scenePath);
+                    if (!changeScene.IsValid())
+                        changeScene = SceneManager.GetSceneByName(change.scenePath);
+
+                    if (!changeScene.IsValid() || changeScene != scene)
+                        continue;
+
+                    GameObject go = FindInSceneByPath(scene, change.objectPath);
+                    if (go == null)
+                        continue;
+
+                    var type = Type.GetType(change.componentType);
+                    if (type == null)
+                        continue;
+
+                    var allComps = go.GetComponents(type);
+                    if (change.componentIndex < 0 || change.componentIndex >= allComps.Length)
+                        continue;
+
+                    var comp = allComps[change.componentIndex];
+                    if (comp == null)
+                        continue;
+
+                    SerializedObject so = new SerializedObject(comp);
+
+                    for (int i = 0; i < change.propertyPaths.Count; i++)
+                    {
+                        string path = change.propertyPaths[i];
+                        string value = change.serializedValues[i];
+                        string typeName = change.valueTypes[i];
+
+                        SerializedProperty prop = so.FindProperty(path);
+                        if (prop == null)
+                            continue;
+
+                        ApplySerializedComponentValue(prop, typeName, value);
+                    }
+
+                    so.ApplyModifiedPropertiesWithoutUndo();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Startpunkt für den Play-Exit-Apply-Flow, angelehnt an SceneWorkflowEditor:
+        /// wartet per delayCall, bis der Editor nicht mehr kompiliert/updatet und
+        /// die ursprüngliche Startszene wieder aktiv ist, bevor HandleApplyChangesFromStoreOnPlayExit
+        /// einmalig aufgerufen wird.
+        /// </summary>
+        private static void TriggerApplyFlowAfterPlayExit()
+        {
+            // Niemals im Play Mode ausführen
+            if (Application.isPlaying) return;
+
+            if (isProcessingPlayExitPopups) return;
+
+            // 1. Sicherheitscheck: Ist die Szene wirklich schon "da"?
+            var activeScene = SceneManager.GetActiveScene();
+            if (!activeScene.isLoaded || EditorApplication.isCompiling || EditorApplication.isUpdating)
+            {
+                // Wenn nicht, reihen wir uns wieder hinten an
+                EditorApplication.delayCall += TriggerApplyFlowAfterPlayExit;
+                return;
+            }
+
+            // 2. DER ENTSCHEIDENDE UNTERSCHIED: Der "Double Jump"
+            // Wir verzögern HIER noch einmal explizit, damit die Hierarchy 
+            // und das Rendering Zeit für einen kompletten Frame haben.
+            EditorApplication.delayCall += () => 
+            {
+                // Nochmalige Prüfung zur Sicherheit vor dem Öffnen
+                if (isProcessingPlayExitPopups || Application.isPlaying) return;
+
+                Debug.Log("[PlayOverrides] Alles stabil, öffne Popups...");
+                HandleApplyChangesFromStoreOnPlayExit();
+            };
         }
 
         private static void CaptureSnapshotsInPlayMode()
@@ -126,7 +320,7 @@ namespace RuntimeChangesSaver.Editor
                 return;
             }
 
-            // Find all GameObjects in all loaded scenes
+            // collect all GameObjects from all loaded scenes
             for (int i = 0; i < sceneCount; i++)
             {
                 Scene scene = SceneManager.GetSceneAt(i);
@@ -150,7 +344,7 @@ namespace RuntimeChangesSaver.Editor
             string key = GetGameObjectKey(go);
             snapshots[key] = new TransformSnapshot(go);
 
-            // Capture all components
+            // capture all non-transform components
             var compDict = new Dictionary<string, ComponentSnapshot>();
             Component[] components = go.GetComponents<Component>();
             foreach (var comp in components)
@@ -167,7 +361,7 @@ namespace RuntimeChangesSaver.Editor
 
             componentSnapshots[key] = compDict;
 
-            // Recurse to children
+            // recurse into child GameObjects
             foreach (Transform child in go.transform)
             {
                 count += CaptureGameObjectRecursive(child.gameObject);
@@ -191,7 +385,7 @@ namespace RuntimeChangesSaver.Editor
             {
                 enterChildren = false;
 
-                // Skip script reference
+                // skip script reference property
                 if (prop.name == "m_Script") continue;
 
                 try
@@ -233,7 +427,7 @@ namespace RuntimeChangesSaver.Editor
         {
             if (go == null) return "";
 
-            // Use scene path + GameObject path as unique identifier
+            // unique identifier composed of scene path and GameObject path
             string scenePath = go.scene.path;
             if (string.IsNullOrEmpty(scenePath))
                 scenePath = go.scene.name;
@@ -242,9 +436,9 @@ namespace RuntimeChangesSaver.Editor
             return $"{scenePath}|{goPath}";
         }
 
-        // Wird verwendet, um nach einem Revert im Compare-Popup im Play Mode
-        // die Baseline für den Transform eines bestimmten GameObjects neu zu setzen,
-        // damit GetChangedComponents dieses Transform nicht mehr als "geändert" meldet.
+        // used after revert in compare popup during play mode
+        // reset baseline transform for specific GameObject
+        // prevent GetChangedComponents from reporting transform as changed
         public static void ResetTransformBaseline(GameObject go)
         {
             if (go == null) return;
@@ -252,8 +446,8 @@ namespace RuntimeChangesSaver.Editor
             snapshots[key] = new TransformSnapshot(go);
         }
 
-        // Wird verwendet, um nach einem Revert im Compare-Popup im Play Mode
-        // die Baseline nur für eine spezifische Nicht-Transform-Komponente neu zu setzen.
+        // used after revert in compare popup during play mode
+        // reset baseline only for specific non-transform component
         public static void ResetComponentBaseline(Component comp)
         {
             if (comp == null) return;
@@ -284,7 +478,7 @@ namespace RuntimeChangesSaver.Editor
 
             string key = GetGameObjectKey(go);
 
-            // If no snapshots exist, this GameObject wasn't captured
+            // early exit when no snapshot exists for this GameObject
             if (!componentSnapshots.ContainsKey(key))
             {
                 return new List<Component>();
@@ -293,7 +487,7 @@ namespace RuntimeChangesSaver.Editor
             var changed = new List<Component>();
             var compSnapshots = componentSnapshots[key];
 
-            // Check Transform changes separately
+            // check Transform changes separately from other components
             if (snapshots.TryGetValue(key, out var originalTransform))
             {
                 TransformSnapshot currentTransform = new TransformSnapshot(go);
@@ -301,16 +495,16 @@ namespace RuntimeChangesSaver.Editor
 
                 if (transformChanges.Count > 0)
                 {
-                    Debug.Log($"[TransformDebug][Tracker.GetChangedComponents] GO='{go.name}', TransformChanged=True, changedProps={string.Join(",", transformChanges)}");
+                    //Debug.Log($"[TransformDebug][Tracker.GetChangedComponents] GO='{go.name}', TransformChanged=True, changedProps={string.Join(",", transformChanges)}");
                     changed.Add(go.transform);
                 }
                 else
                 {
-                    Debug.Log($"[TransformDebug][Tracker.GetChangedComponents] GO='{go.name}', TransformChanged=False");
+                    //Debug.Log($"[TransformDebug][Tracker.GetChangedComponents] GO='{go.name}', TransformChanged=False");
                 }
             }
 
-            // Check other components
+            // other components change check
             foreach (var comp in go.GetComponents<Component>())
             {
                 if (comp is null or Transform) continue;
@@ -356,7 +550,7 @@ namespace RuntimeChangesSaver.Editor
                     if (currentValue == null && originalValue == null) continue;
                     if (currentValue == null || originalValue == null) return true;
 
-                    // Special handling for different types
+                    // special comparison handling for numeric and vector types
                     if (currentValue is Vector2 v2Current && originalValue is Vector2 v2Original)
                     {
                         if (Vector2.Distance(v2Current, v2Original) > 0.0001f) return true;
@@ -380,7 +574,7 @@ namespace RuntimeChangesSaver.Editor
                 }
                 catch
                 {
-                    // ignored
+                    // ignore comparison errors
                 }
             }
 
@@ -402,8 +596,8 @@ namespace RuntimeChangesSaver.Editor
                 if (!snapshots.ContainsKey(goKey))
                     continue;
 
-                // Parse the key to find the GameObject
-                // Key format: "scenePath|goPath"
+                // parse composite key to locate GameObject
+                // key format: "scenePath|goPath"
                 var parts = goKey.Split('|');
                 if (parts.Length != 2) continue;
 
@@ -468,7 +662,7 @@ namespace RuntimeChangesSaver.Editor
             string goKey = GetGameObjectKey(go);
             string compKey = GetComponentKey(comp);
 
-            // Ursprünglichen Snapshot sichern, bevor wir die Baseline verschieben.
+            // store original snapshot before shifting baseline
             ComponentSnapshot originalSnapshot = null;
 
             if (!componentSnapshots.TryGetValue(goKey, out var dict))
@@ -484,11 +678,11 @@ namespace RuntimeChangesSaver.Editor
                 }
             }
 
-            // Baseline für diese Komponente auf aktuellen Zustand verschieben
+            // shift baseline for this component to current state
             ComponentSnapshot currentSnapshot = CaptureComponentSnapshot(comp);
             dict[compKey] = currentSnapshot;
 
-            // Änderungen im ScriptableObject speichern (inkl. Originalwerte, falls verfügbar).
+            // persist component changes inside ScriptableObject store (including original values when available)
             RecordComponentChangeToStore(comp, originalSnapshot);
         }
 
@@ -501,7 +695,7 @@ namespace RuntimeChangesSaver.Editor
             var allOfType = comp.gameObject.GetComponents(comp.GetType());
             int index = Array.IndexOf(allOfType, comp);
 
-            // Erzeuge einen Schnappschuss des aktuellen Zustands
+            // create snapshot of current component state
             SerializedObject so = new SerializedObject(comp);
             SerializedProperty prop = so.GetIterator();
 
@@ -522,12 +716,12 @@ namespace RuntimeChangesSaver.Editor
                 values.Add(serializedValue);
             }
 
-            // Bestehenden Eintrag für diese Komponente suchen
+            // search existing change entry for this component
             int existing = store.changes.FindIndex(c => c.scenePath == scenePath && c.objectPath == objectPath && c.componentType == comp.GetType().AssemblyQualifiedName && c.componentIndex == index);
 
-            // Originalwerte bestimmen:
-            // - Wenn bereits ein Eintrag mit Originalwerten existiert, diesen beibehalten.
-            // - Andernfalls aus dem übergebenen Snapshot ableiten (falls vorhanden).
+            // determine original values source
+            // keep existing original values when entry already present
+            // otherwise derive original values from provided snapshot when available
             bool hasOriginal = false;
             List<string> originalValues = new List<string>();
             List<string> originalTypes = new List<string>();
@@ -636,7 +830,7 @@ namespace RuntimeChangesSaver.Editor
                     serializedValue = prop.enumValueIndex.ToString();
                     break;
                 default:
-                    // Nicht unterstützte Typen ignorieren wir
+                    // unsupported property types ignored
                     typeName = string.Empty;
                     serializedValue = string.Empty;
                     break;
@@ -695,7 +889,7 @@ namespace RuntimeChangesSaver.Editor
                     serializedValue = Convert.ToInt32(e).ToString();
                     break;
                 default:
-                    // Nicht unterstützte Typen bleiben leer
+                    // unsupported snapshot value types left empty
                     typeName = string.Empty;
                     serializedValue = string.Empty;
                     break;
@@ -756,14 +950,487 @@ namespace RuntimeChangesSaver.Editor
         public static void MarkForPersistence(GameObject go)
         {
             string key = GetGameObjectKey(go);
-            Debug.Log($"[TransformDebug][Tracker.MarkForPersistence] GO='{go.name}', Key='{key}'");
+            //Debug.Log($"[TransformDebug][Tracker.MarkForPersistence] GO='{go.name}', Key='{key}'");
+        }
+
+        // private static void HandleApplyChangesFromStoreOnPlayExit()
+        // {
+        //     if (Application.isPlaying)
+        //         return;
+        //
+        //     if (isProcessingPlayExitPopups)
+        //     {
+        //         Debug.Log("[PlayOverrides][HandleApplyChangesFromStoreOnPlayExit] Already processing, aborting re-entry");
+        //         return;
+        //     }
+        //
+        //     isProcessingPlayExitPopups = true;
+        //
+        //     var transformStore = TransformChangesStore.LoadExisting();
+        //     var compStore = ComponentChangesStore.LoadExisting();
+        //
+        //     bool hasTransformChanges = transformStore != null && transformStore.changes.Count > 0;
+        //     bool hasComponentChanges = compStore != null && compStore.changes.Count > 0;
+        //
+        //     Debug.Log($"[PlayOverrides][HandleApplyChangesFromStoreOnPlayExit] hasTransformChanges={hasTransformChanges}, hasComponentChanges={hasComponentChanges}");
+        //
+        //     if (!hasTransformChanges && !hasComponentChanges)
+        //     {
+        //         return;
+        //     }
+        //
+        //     var allScenePaths = new HashSet<string>();
+        //     if (hasTransformChanges)
+        //     {
+        //         foreach (var change in transformStore.changes)
+        //         {
+        //             if (!string.IsNullOrEmpty(change.scenePath))
+        //                 allScenePaths.Add(NormalizeScenePath(change.scenePath));
+        //         }
+        //     }
+        //
+        //     if (hasComponentChanges)
+        //     {
+        //         foreach (var change in compStore.changes)
+        //         {
+        //             if (!string.IsNullOrEmpty(change.scenePath))
+        //                 allScenePaths.Add(NormalizeScenePath(change.scenePath));
+        //         }
+        //     }
+        //     Debug.Log($"[PlayOverrides][HandleApplyChangesFromStoreOnPlayExit] scenePaths=[{string.Join(", ", allScenePaths)}]");
+        //
+        //     if (allScenePaths.Count == 0)
+        //         return;
+        //
+        //     var startScene = SceneManager.GetActiveScene();
+        //     string startScenePath = startScene.IsValid() ? NormalizeScenePath(startScene.path) : null;
+        //
+        //     // geordnete Liste der Szenen mit Overrides, Startszene (falls vorhanden) zuerst
+        //     var orderedScenePaths = new List<string>(allScenePaths);
+        //     if (!string.IsNullOrEmpty(startScenePath) && orderedScenePaths.Contains(startScenePath))
+        //     {
+        //         orderedScenePaths.Remove(startScenePath);
+        //         orderedScenePaths.Insert(0, startScenePath);
+        //     }
+        //
+        //     // Arbeitskopie für verbleibende Szenen nach der aktuellen
+        //     var remaining = new List<string>(orderedScenePaths);
+        //
+        //     Debug.Log($"[PlayOverrides][HandleApplyChangesFromStoreOnPlayExit] startScenePath='{startScenePath}', ordered=[{string.Join(", ", orderedScenePaths)}]");
+        //
+        //     // Hilfsfunktion: pro Szene Apply/Verwerfen-Dialog und ggf. Anwenden
+        //     void ProcessCurrentScene(string scenePath)
+        //     {
+        //         string normalizedScenePath = NormalizeScenePath(scenePath);
+        //
+        //         bool hasTransformForScene = hasTransformChanges && transformStore != null && transformStore.changes.Exists(
+        //             c => string.Equals(NormalizeScenePath(c.scenePath), normalizedScenePath, StringComparison.OrdinalIgnoreCase));
+        //
+        //         bool hasComponentForScene = hasComponentChanges && compStore != null && compStore.changes.Exists(
+        //             c => string.Equals(NormalizeScenePath(c.scenePath), normalizedScenePath, StringComparison.OrdinalIgnoreCase));
+        //
+        //         Debug.Log($"[PlayOverrides][ProcessCurrentScene] scene='{scenePath}', hasTransform={hasTransformForScene}, hasComponent={hasComponentForScene}");
+        //
+        //         if (!hasTransformForScene && !hasComponentForScene)
+        //         {
+        //             Debug.Log("[PlayOverrides][ProcessCurrentScene] No overrides for this scene, skipping");
+        //             return;
+        //         }
+        //
+        //         string msg = "Für die Szene\n\n" + scenePath + "\n\nliegen Play Mode Overrides vor. Sollen diese Änderungen angewendet werden?";
+        //
+        //         bool apply = EditorUtility.DisplayDialog(
+        //             "Play Mode Overrides anwenden",
+        //             msg,
+        //             "Änderungen anwenden",
+        //             "Änderungen verwerfen"
+        //         );
+        //
+        //         if (apply)
+        //         {
+        //             Debug.Log($"[PlayOverrides][ProcessCurrentScene] User chose APPLY for scene='{scenePath}'");
+        //             ApplyChangesFromStoreToEditModeForScene(scenePath, transformStore, compStore);
+        //
+        //             // angewendete Einträge für diese Szene aus den Stores entfernen,
+        //             // damit sie beim nächsten Durchlauf nicht erneut auftauchen.
+        //             if (hasTransformForScene && transformStore != null)
+        //             {
+        //                 transformStore.changes.RemoveAll(c => string.Equals(NormalizeScenePath(c.scenePath), normalizedScenePath, StringComparison.OrdinalIgnoreCase));
+        //                 EditorUtility.SetDirty(transformStore);
+        //             }
+        //
+        //             if (hasComponentForScene && compStore != null)
+        //             {
+        //                 compStore.changes.RemoveAll(c => string.Equals(NormalizeScenePath(c.scenePath), normalizedScenePath, StringComparison.OrdinalIgnoreCase));
+        //                 EditorUtility.SetDirty(compStore);
+        //             }
+        //
+        //             AssetDatabase.SaveAssets();
+        //         }
+        //         else
+        //         {
+        //             Debug.Log($"[PlayOverrides][ProcessCurrentScene] User chose DISCARD for scene='{scenePath}'");
+        //             if (hasTransformForScene)
+        //             {
+        //                 transformStore.changes.RemoveAll(c => c.scenePath == scenePath);
+        //                 EditorUtility.SetDirty(transformStore);
+        //             }
+        //
+        //             if (hasComponentForScene)
+        //             {
+        //                 compStore.changes.RemoveAll(c => c.scenePath == scenePath);
+        //                 EditorUtility.SetDirty(compStore);
+        //             }
+        //
+        //             AssetDatabase.SaveAssets();
+        //         }
+        //     }
+        //
+        //     // 1) Startszene (aktuell aktive) zuerst abfragen, falls sie Overrides hat
+        //     if (!string.IsNullOrEmpty(startScenePath) && remaining.Contains(startScenePath))
+        //     {
+        //         Debug.Log("[PlayOverrides][HandleApplyChangesFromStoreOnPlayExit] Processing start scene first");
+        //         ProcessCurrentScene(startScenePath);
+        //         remaining.RemoveAll(p => p == startScenePath);
+        //     }
+        //
+        //     // 2) Solange weitere Szenen mit Overrides existieren, fragen ob wir zu der nächsten wechseln sollen
+        //     while (remaining.Count > 0)
+        //     {
+        //         string nextScenePath = remaining[0];
+        //
+        //         Debug.Log($"[PlayOverrides][HandleApplyChangesFromStoreOnPlayExit] Remaining scenes=[{string.Join(", ", remaining)}], next='{nextScenePath}'");
+        //
+        //         string question = "Es existieren noch Play Mode Overrides für die Szene:\n\n" +
+        //                          nextScenePath +
+        //                          "\n\nSollen wir zu dieser Szene wechseln, um die Änderungen anzuwenden oder zu verwerfen?";
+        //
+        //         bool switchScene = EditorUtility.DisplayDialog(
+        //             "Weitere Play Mode Overrides",
+        //             question,
+        //             "Szene wechseln",
+        //             "Rest verwerfen"
+        //         );
+        //
+        //         if (!switchScene)
+        //         {
+        //             Debug.Log("[PlayOverrides][HandleApplyChangesFromStoreOnPlayExit] User chose to DISCARD remaining scenes");
+        //             // alle verbleibenden Szenen-Einträge verwerfen
+        //             if (hasTransformChanges && transformStore != null)
+        //             {
+        //                 transformStore.changes.RemoveAll(c => remaining.Contains(c.scenePath));
+        //                 EditorUtility.SetDirty(transformStore);
+        //             }
+        //
+        //             if (hasComponentChanges && compStore != null)
+        //             {
+        //                 compStore.changes.RemoveAll(c => remaining.Contains(c.scenePath));
+        //                 EditorUtility.SetDirty(compStore);
+        //             }
+        //
+        //             AssetDatabase.SaveAssets();
+        //             remaining.Clear();
+        //             break;
+        //         }
+        //
+        //         try
+        //         {
+        //             EditorUtility.DisplayProgressBar("Play Mode Overrides", $"Wechsle zu Szene: {nextScenePath}", 0.5f);
+        //             Debug.Log($"[PlayOverrides][HandleApplyChangesFromStoreOnPlayExit] Opening scene '{nextScenePath}' in Single mode (with save)");
+        //
+        //             // aktuelle Szene vor dem Wechsel speichern
+        //             var activeScene = EditorSceneManager.GetActiveScene();
+        //             if (activeScene.IsValid())
+        //             {
+        //                 EditorSceneManager.SaveScene(activeScene);
+        //             }
+        //
+        //             EditorSceneManager.OpenScene(nextScenePath, OpenSceneMode.Single);
+        //             ProcessCurrentScene(nextScenePath);
+        //         }
+        //         catch
+        //         {
+        //             Debug.LogError($"[PlayOverrides][HandleApplyChangesFromStoreOnPlayExit] Failed to open scene '{nextScenePath}'");
+        //         }
+        //         finally
+        //         {
+        //             EditorUtility.ClearProgressBar();
+        //         }
+        //
+        //         remaining.RemoveAt(0);
+        //     }
+        //
+        //     // 3) Am Ende optional zurück zur Startszene wechseln
+        //     if (!string.IsNullOrEmpty(startScenePath) && startScenePath != SceneManager.GetActiveScene().path)
+        //     {
+        //         bool goBack = EditorUtility.DisplayDialog(
+        //             "Zur Startszene zurückkehren?",
+        //             "Möchtest du wieder zur Startszene wechseln?\n\n" + startScenePath,
+        //             "Ja",
+        //             "Nein"
+        //         );
+        //
+        //         if (goBack)
+        //         {
+        //             try
+        //             {
+        //                 Debug.Log($"[PlayOverrides][HandleApplyChangesFromStoreOnPlayExit] Returning to start scene '{startScenePath}' (with save)");
+        //
+        //                 var activeScene = EditorSceneManager.GetActiveScene();
+        //                 if (activeScene.IsValid())
+        //                 {
+        //                     EditorSceneManager.SaveScene(activeScene);
+        //                 }
+        //
+        //                 EditorSceneManager.OpenScene(startScenePath, OpenSceneMode.Single);
+        //             }
+        //             catch
+        //             {
+        //                 Debug.LogError($"[PlayOverrides][HandleApplyChangesFromStoreOnPlayExit] Failed to return to start scene '{startScenePath}'");
+        //             }
+        //         }
+        //     }
+        //
+        //     // Cleanup, damit ein neuer Play-Zyklus frisch starten kann und
+        //     // keine weiteren Popup-Runden für diesen Exit ausgelöst werden.
+        //     isProcessingPlayExitPopups = false;
+        //     startScenePathAtPlayEnter = null;
+        // }
+
+        private static void HandleApplyChangesFromStoreOnPlayExit()
+{
+    if (Application.isPlaying || isProcessingPlayExitPopups) return;
+
+    var transformStore = TransformChangesStore.LoadExisting();
+    var compStore = ComponentChangesStore.LoadExisting();
+
+    bool hasTransformChanges = transformStore != null && transformStore.changes.Count > 0;
+    bool hasComponentChanges = compStore != null && compStore.changes.Count > 0;
+
+    if (!hasTransformChanges && !hasComponentChanges) return;
+
+    isProcessingPlayExitPopups = true;
+
+    var allScenePaths = new HashSet<string>();
+    if (hasTransformChanges) foreach (var c in transformStore.changes) allScenePaths.Add(NormalizeScenePath(c.scenePath));
+    if (hasComponentChanges) foreach (var c in compStore.changes) allScenePaths.Add(NormalizeScenePath(c.scenePath));
+
+    var startScene = SceneManager.GetActiveScene();
+    string startScenePath = startScene.IsValid() ? NormalizeScenePath(startScene.path) : null;
+
+    var orderedScenePaths = new List<string>(allScenePaths);
+    if (!string.IsNullOrEmpty(startScenePath) && orderedScenePaths.Contains(startScenePath))
+    {
+        orderedScenePaths.Remove(startScenePath);
+        orderedScenePaths.Insert(0, startScenePath);
+    }
+
+    // Starte die Kette mit der ersten Szene
+    ProcessNextSceneInQueue(orderedScenePaths, startScenePath, transformStore, compStore);
+}
+
+private static void ProcessNextSceneInQueue(List<string> remainingScenes, string startScenePath, TransformChangesStore tStore, ComponentChangesStore cStore)
+{
+    if (remainingScenes.Count == 0)
+    {
+        CheckReturnToStartScene(startScenePath);
+        return;
+    }
+
+    string currentPath = remainingScenes[0];
+    remainingScenes.RemoveAt(0);
+
+    string activePath = NormalizeScenePath(SceneManager.GetActiveScene().path);
+
+    // Wenn wir nicht in der Zielszene sind, fragen ob wir wechseln wollen
+    if (!string.Equals(activePath, currentPath, StringComparison.OrdinalIgnoreCase))
+    {
+        bool switchScene = EditorUtility.DisplayDialog("Szenenwechsel", 
+            $"Zu Szene wechseln?\n\n{currentPath}", "Ja", "Rest verwerfen");
+
+        if (switchScene)
+        {
+            EditorSceneManager.SaveOpenScenes();
+            EditorSceneManager.OpenScene(currentPath, OpenSceneMode.Single);
+            // Delay, damit die Szene fertig geladen und gezeichnet wird
+            EditorApplication.delayCall += () => ProcessNextSceneInQueue(new List<string> { currentPath }.Concat(remainingScenes).ToList(), startScenePath, tStore, cStore);
+            return;
+        }
+        else
+        {
+            // Rest verwerfen und beenden
+            isProcessingPlayExitPopups = false;
+            return;
+        }
+    }
+
+    // Wenn wir in der richtigen Szene sind: Änderungen anwenden?
+    string msg = $"Play Mode Overrides für Szene anwenden?\n\n{currentPath}";
+    if (EditorUtility.DisplayDialog("Änderungen anwenden", msg, "Anwenden", "Verwerfen"))
+    {
+        ApplyChangesFromStoreToEditModeForScene(currentPath, tStore, cStore);
+        
+        // WICHTIG: delayCall nach dem Anwenden, damit SceneView aktualisiert wird
+        EditorApplication.delayCall += () => 
+        {
+            SceneView.RepaintAll();
+            ProcessNextSceneInQueue(remainingScenes, startScenePath, tStore, cStore);
+        };
+    }
+    else
+    {
+        EditorApplication.delayCall += () => ProcessNextSceneInQueue(remainingScenes, startScenePath, tStore, cStore);
+    }
+}
+
+private static void CheckReturnToStartScene(string startPath)
+{
+    string currentPath = NormalizeScenePath(SceneManager.GetActiveScene().path);
+    if (!string.IsNullOrEmpty(startPath) && !string.Equals(currentPath, startPath, StringComparison.OrdinalIgnoreCase))
+    {
+        if (EditorUtility.DisplayDialog("Zurück zur Startszene?", $"Möchtest du zurück zu:\n\n{startPath}", "Ja", "Nein"))
+        {
+            EditorSceneManager.SaveOpenScenes();
+            EditorSceneManager.OpenScene(startPath, OpenSceneMode.Single);
+        }
+    }
+    isProcessingPlayExitPopups = false;
+}
+        
+        
+        private static void ApplyChangesFromStoreToEditModeForScene(string targetScenePath, TransformChangesStore transformStore, ComponentChangesStore compStore)
+        {
+            targetScenePath = NormalizeScenePath(targetScenePath);
+
+            if (transformStore != null && transformStore.changes.Count > 0)
+            {
+                foreach (var change in transformStore.changes)
+                {
+                    if (!string.Equals(NormalizeScenePath(change.scenePath), targetScenePath, StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    var scene = SceneManager.GetSceneByPath(NormalizeScenePath(change.scenePath));
+                    if (!scene.IsValid())
+                        scene = SceneManager.GetSceneByName(change.scenePath);
+
+                    if (!scene.IsValid())
+                        continue;
+
+                    GameObject go = FindInSceneByPath(scene, change.objectPath);
+                    if (go == null)
+                    {
+                        Debug.LogWarning($"[PlayOverrides][ApplyChangesForScene] Could not find GO for path='{change.objectPath}' in scene='{scene.path}'");
+                        continue;
+                    }
+
+                    Transform t = go.transform;
+                    RectTransform rt = t as RectTransform;
+
+                    Undo.RecordObject(t, "Apply Play Mode Transform Changes");
+
+                    Debug.Log($"[PlayOverrides][ApplyChangesForScene] Applying Transform change to GO='{go.name}', scene='{scene.path}', props=[{(change.modifiedProperties is { Count: > 0 } ? string.Join(",", change.modifiedProperties) : "ALL")}]");
+
+                    if (change.modifiedProperties is { Count: > 0 })
+                    {
+                        foreach (var prop in change.modifiedProperties)
+                        {
+                            ApplyPropertyToTransform(t, rt, change, prop);
+                        }
+                    }
+                    else
+                    {
+                        t.localPosition = change.position;
+                        t.localRotation = change.rotation;
+                        t.localScale = change.scale;
+
+                        if (rt != null && change.isRectTransform)
+                        {
+                            rt.anchoredPosition = change.anchoredPosition;
+                            rt.anchoredPosition3D = change.anchoredPosition3D;
+                            rt.anchorMin = change.anchorMin;
+                            rt.anchorMax = change.anchorMax;
+                            rt.pivot = change.pivot;
+                            rt.sizeDelta = change.sizeDelta;
+                            rt.offsetMin = change.offsetMin;
+                            rt.offsetMax = change.offsetMax;
+                        }
+                    }
+
+                    EditorUtility.SetDirty(go);
+                    if (scene.IsValid())
+                    {
+                        EditorSceneManager.MarkSceneDirty(scene);
+                    }
+                }
+            }
+
+            if (compStore != null && compStore.changes.Count > 0)
+            {
+                foreach (var change in compStore.changes)
+                {
+                    if (!string.Equals(NormalizeScenePath(change.scenePath), targetScenePath, StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    var scene = SceneManager.GetSceneByPath(change.scenePath);
+                    if (!scene.IsValid())
+                        scene = SceneManager.GetSceneByName(change.scenePath);
+
+                    if (!scene.IsValid())
+                        continue;
+
+                    GameObject go = FindInSceneByPath(scene, change.objectPath);
+                    if (go == null)
+                        continue;
+
+                    var type = Type.GetType(change.componentType);
+                    if (type == null)
+                        continue;
+
+                    var allComps = go.GetComponents(type);
+                    if (change.componentIndex < 0 || change.componentIndex >= allComps.Length)
+                        continue;
+
+                    var comp = allComps[change.componentIndex];
+                    if (comp == null)
+                        continue;
+
+                    SerializedObject so = new SerializedObject(comp);
+                    Undo.RecordObject(comp, "Apply Play Mode Component Changes");
+
+                    for (int i = 0; i < change.propertyPaths.Count; i++)
+                    {
+                        string path = change.propertyPaths[i];
+                        string value = change.serializedValues[i];
+                        string typeName = change.valueTypes[i];
+
+                        SerializedProperty prop = so.FindProperty(path);
+                        if (prop == null)
+                            continue;
+
+                        ApplySerializedComponentValue(prop, typeName, value);
+                    }
+
+                    so.ApplyModifiedProperties();
+                    EditorUtility.SetDirty(comp);
+                    if (scene.IsValid())
+                    {
+                        EditorSceneManager.MarkSceneDirty(scene);
+                    }
+                }
+            }
+
+            AssetDatabase.SaveAssets();
+
+            // Editor-Ansicht und Hierarchie aktualisieren, damit die
+            // angewendeten Änderungen sofort sichtbar werden.
+            SceneView.RepaintAll();
+            EditorApplication.DirtyHierarchyWindowSorting();
         }
 
         private static void ApplyChangesFromStoreToEditMode()
         {
-            // Transform-Änderungen werden über das ScriptableObject
-            // PlayModeTransformChangesStore persistiert. Dies überlebt
-            // Domain Reloads besser als statische Dictionaries.
+            // use TransformChangesStore ScriptableObject for transform changes persistence
+            // provide better survival across domain reloads than static dictionaries
 
             var store = TransformChangesStore.LoadExisting();
             if (store != null && store.changes.Count > 0)
@@ -786,8 +1453,8 @@ namespace RuntimeChangesSaver.Editor
 
                     Undo.RecordObject(t, "Apply Play Mode Transform Changes");
 
-                    // Wenn modifiedProperties gesetzt ist, nur diese anwenden,
-                    // sonst alle Transform-Werte.
+                    // apply only properties listed in modifiedProperties when set
+                    // otherwise apply all transform values
                     if (change.modifiedProperties is { Count: > 0 })
                     {
                         foreach (var prop in change.modifiedProperties)
@@ -820,7 +1487,7 @@ namespace RuntimeChangesSaver.Editor
                         EditorSceneManager.MarkSceneDirty(scene);
                     }
 
-                    Debug.Log($"[TransformDebug][Tracker.ApplyChanges] Applied Transform changes to GO='{go.name}', scene='{scene.path}'");
+                    //Debug.Log($"[TransformDebug][Tracker.ApplyChanges] Applied Transform changes to GO='{go.name}', scene='{scene.path}'");
                 }
             }
 
@@ -1136,7 +1803,7 @@ namespace RuntimeChangesSaver.Editor
 
             string key = GetGameObjectKey(go);
             bool found = snapshots.TryGetValue(key, out var snap);
-            Debug.Log($"[TransformDebug][Tracker.GetSnapshot] GO='{go.name}', Key='{key}', Found={found}");
+            //Debug.Log($"[TransformDebug][Tracker.GetSnapshot] GO='{go.name}', Key='{key}', Found={found}");
             return found ? snap : null;
         }
 

@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -50,7 +50,7 @@ namespace RuntimeChangesSaver.Editor
 
             if (Application.isPlaying)
             {
-                // Im Play Mode: Änderungen dynamisch über Snapshots ermitteln
+                // play mode dynamic change detection via in-memory snapshots
                 for (int i = 0; i < sceneCount; i++)
                 {
                     Scene scene = SceneManager.GetSceneAt(i);
@@ -72,8 +72,8 @@ namespace RuntimeChangesSaver.Editor
                     }
                 }
 
-                // Zusätzlich: bereits akzeptierte Overrides aus den ScriptableObject-Stores anzeigen,
-                // damit sie auch während des Play Modes im Browser sichtbar sind.
+                // additionally show already accepted overrides from ScriptableObject stores
+                // accepted overrides visibility in browser during play mode
 
                 var transformStore = TransformChangesStore.LoadExisting();
                 if (transformStore != null)
@@ -157,8 +157,8 @@ namespace RuntimeChangesSaver.Editor
             }
             else
             {
-                // Im Edit Mode: auf die persistenten ScriptableObject-Stores schauen,
-                // um die zuletzt akzeptierten Änderungen anzuzeigen.
+                // edit mode usage of persistent ScriptableObject stores
+                // display of most recently accepted changes
                 var sceneMap = new Dictionary<Scene, Dictionary<GameObject, GameObjectEntry>>();
 
                 var transformStore = TransformChangesStore.LoadExisting();
@@ -369,6 +369,9 @@ namespace RuntimeChangesSaver.Editor
 
                 foreach (var entry in entries)
                 {
+                    if (entry.GameObject == null)
+                        continue;
+
                     EditorGUILayout.BeginHorizontal();
                     entry.Expanded = EditorGUILayout.Foldout(entry.Expanded, entry.GameObject.name, true);
                     EditorGUILayout.ObjectField(entry.GameObject, typeof(GameObject), true);
@@ -388,7 +391,7 @@ namespace RuntimeChangesSaver.Editor
                         GUILayout.Space(10);
                         if (GUILayout.Button(comp.GetType().Name, EditorStyles.linkLabel))
                         {
-                            // Popup immer direkt unterhalb der Button-Zeile öffnen
+                            // popup opening directly below button row
                             Rect buttonRect = GUILayoutUtility.GetLastRect();
                             Rect popupRect = new Rect(buttonRect.x, buttonRect.yMax, buttonRect.width, 0f);
                             PopupWindow.Show(popupRect, new OverrideComparePopup(comp));
