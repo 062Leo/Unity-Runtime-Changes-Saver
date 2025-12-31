@@ -404,14 +404,24 @@ namespace RuntimeChangesSaver.Editor
 
                         EditorGUILayout.BeginHorizontal();
                         GUILayout.Space(10);
-                        if (GUILayout.Button(comp.GetType().Name, EditorStyles.linkLabel))
+
+                        // reserve rect for the object field
+                        Rect objectRect = GUILayoutUtility.GetRect(GUIContent.none, GUIStyle.none, GUILayout.ExpandWidth(true));
+
+                        // draw the ObjectField only on repaint so it doesn't consume mouse events
+                        if (Event.current.type == EventType.Repaint)
                         {
-                            // popup open position below button row
-                            Rect buttonRect = GUILayoutUtility.GetLastRect();
-                            Rect popupRect = new Rect(buttonRect.x, buttonRect.yMax, buttonRect.width, 0f);
+                            EditorGUI.ObjectField(objectRect, comp, typeof(Component), true);
+                        }
+
+                        // make the entire ObjectField clickable to open the compare popup
+                        if (GUI.Button(objectRect, GUIContent.none, GUIStyle.none))
+                        {
+                            // popup open position below object field row
+                            Rect popupRect = new Rect(objectRect.x, objectRect.yMax, objectRect.width, 0f);
                             PopupWindow.Show(popupRect, new OverrideComparePopup(comp));
                         }
-                        EditorGUILayout.ObjectField(comp, typeof(Component), true);
+
                         EditorGUILayout.EndHorizontal();
                     }
 
