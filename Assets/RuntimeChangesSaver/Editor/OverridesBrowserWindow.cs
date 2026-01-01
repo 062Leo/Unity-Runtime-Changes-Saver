@@ -16,6 +16,7 @@ namespace RuntimeChangesSaver.Editor
 
         private readonly Dictionary<Scene, List<GameObjectEntry>> _sceneEntries = new Dictionary<Scene, List<GameObjectEntry>>();
         private readonly Dictionary<Scene, bool> _sceneFoldouts = new Dictionary<Scene, bool>();
+        private readonly Dictionary<int, bool> _gameObjectFoldouts = new Dictionary<int, bool>();
         private Vector2 _scroll;
 
         [MenuItem("Tools/Play Mode Overrides Browser")]
@@ -387,12 +388,17 @@ namespace RuntimeChangesSaver.Editor
                     if (!entry.GameObject)
                         continue;
 
+                    int id = entry.GameObject.GetInstanceID();
+                    bool goExpanded = _gameObjectFoldouts.GetValueOrDefault(id, true);
+
                     EditorGUILayout.BeginHorizontal();
-                    entry.Expanded = EditorGUILayout.Foldout(entry.Expanded, entry.GameObject.name, true);
+                    goExpanded = EditorGUILayout.Foldout(goExpanded, entry.GameObject.name, true);
                     EditorGUILayout.ObjectField(entry.GameObject, typeof(GameObject), true);
                     EditorGUILayout.EndHorizontal();
 
-                    if (!entry.Expanded)
+                    _gameObjectFoldouts[id] = goExpanded;
+
+                    if (!goExpanded)
                         continue;
 
                     EditorGUI.indentLevel++;
@@ -413,14 +419,14 @@ namespace RuntimeChangesSaver.Editor
                         {
                             EditorGUI.ObjectField(objectRect, comp, typeof(Component), true);
                         }
-
-                        // make the entire ObjectField clickable to open the compare popup
                         if (GUI.Button(objectRect, GUIContent.none, GUIStyle.none))
                         {
                             // popup open position below object field row
                             Rect popupRect = new Rect(objectRect.x, objectRect.yMax, objectRect.width, 0f);
                             PopupWindow.Show(popupRect, new OverrideComparePopup(comp));
                         }
+
+                        // make the entire ObjectField clickable to open the compare popup
 
                         EditorGUILayout.EndHorizontal();
                     }
