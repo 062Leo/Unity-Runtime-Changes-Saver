@@ -124,6 +124,35 @@ namespace RuntimeChangesSaver.Editor.OverrideComparePopup
         }
 
         /// <summary>
+        /// Serializes a property to string representation.
+        /// </summary>
+        public static string SerializeProperty(SerializedProperty prop)
+        {
+            switch (prop.propertyType)
+            {
+                case SerializedPropertyType.Integer: return prop.intValue.ToString();
+                case SerializedPropertyType.Boolean: return prop.boolValue.ToString();
+                case SerializedPropertyType.Float: return prop.floatValue.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                case SerializedPropertyType.String: return prop.stringValue;
+                case SerializedPropertyType.Color: return "#" + ColorUtility.ToHtmlStringRGBA(prop.colorValue);
+                case SerializedPropertyType.Vector2:
+                    var v2 = prop.vector2Value;
+                    return $"{v2.x.ToString(System.Globalization.CultureInfo.InvariantCulture)},{v2.y.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+                case SerializedPropertyType.Vector3:
+                    var v3 = prop.vector3Value;
+                    return $"{v3.x.ToString(System.Globalization.CultureInfo.InvariantCulture)},{v3.y.ToString(System.Globalization.CultureInfo.InvariantCulture)},{v3.z.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+                case SerializedPropertyType.Vector4:
+                    var v4 = prop.vector4Value;
+                    return $"{v4.x.ToString(System.Globalization.CultureInfo.InvariantCulture)},{v4.y.ToString(System.Globalization.CultureInfo.InvariantCulture)},{v4.z.ToString(System.Globalization.CultureInfo.InvariantCulture)},{v4.w.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+                case SerializedPropertyType.Quaternion:
+                    var q = prop.quaternionValue;
+                    return $"{q.x.ToString(System.Globalization.CultureInfo.InvariantCulture)},{q.y.ToString(System.Globalization.CultureInfo.InvariantCulture)},{q.z.ToString(System.Globalization.CultureInfo.InvariantCulture)},{q.w.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+                case SerializedPropertyType.Enum: return prop.enumValueIndex.ToString();
+                default: return string.Empty;
+            }
+        }
+
+        /// <summary>
         /// Checks if two serialized properties differ in value.
         /// </summary>
         public static bool PropertiesDiffer(SerializedProperty a, SerializedProperty b)

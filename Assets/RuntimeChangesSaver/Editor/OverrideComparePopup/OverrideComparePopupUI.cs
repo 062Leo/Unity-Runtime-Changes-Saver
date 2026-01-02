@@ -108,27 +108,10 @@ namespace RuntimeChangesSaver.Editor.OverrideComparePopup
         /// </summary>
         public static void DrawFooter(Rect rect, bool hasUnsavedChanges)
         {
-            GUILayout.BeginArea(rect);
-
-            GUILayout.Space(2);
-            GUILayout.BeginHorizontal();
-
             if (hasUnsavedChanges)
             {
-                float infoWidth = rect.width * 0.6f;
-                GUILayout.BeginVertical(GUILayout.Width(infoWidth));
                 EditorGUILayout.HelpBox("Current Play Mode changes differ from the stored overrides and have not been applied yet.", MessageType.Info);
-                GUILayout.EndVertical();
             }
-            else
-            {
-                GUILayout.Space(rect.width * 0.6f);
-            }
-
-            GUILayout.FlexibleSpace();
-            GUILayout.EndHorizontal();
-
-            GUILayout.EndArea();
         }
     }
 }

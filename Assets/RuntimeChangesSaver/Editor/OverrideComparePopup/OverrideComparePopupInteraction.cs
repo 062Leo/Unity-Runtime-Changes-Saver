@@ -121,35 +121,111 @@ namespace RuntimeChangesSaver.Editor.OverrideComparePopup
         }
 
         /// <summary>
-        /// Checks if there are unsaved changes compared to the snapshot.
+        /// Checks if there are unsaved changes compared to the store.
+        /// Returns true if the current live component has changes that are NOT yet saved in the store,
+        /// or if the current values differ from the stored values.
         /// </summary>
         public bool HasUnsavedChanges()
         {
-            if (snapshotComponent == null || liveComponent == null)
+            if (liveComponent == null)
                 return false;
 
-            var snapshotSO = new SerializedObject(snapshotComponent);
-            var liveSO = new SerializedObject(liveComponent);
+            var go = liveComponent.gameObject;
+            string scenePath = go.scene.path;
+            if (string.IsNullOrEmpty(scenePath))
+                scenePath = go.scene.name;
 
-            SerializedProperty prop = snapshotSO.GetIterator();
-            bool enterChildren = true;
+            string objectPath = OverrideComparePopupUtilities.GetGameObjectPath(go.transform);
 
-            while (prop.NextVisible(enterChildren))
+            if (liveComponent is Transform or RectTransform)
             {
-                enterChildren = false;
+                var tStore = TransformChangesStore.LoadExisting();
+                if (tStore == null)
+                    return true; // No store = changes not saved
 
-                if (prop.name == "m_Script")
-                    continue;
+                int index = tStore.changes.FindIndex(c => c.scenePath == scenePath && c.objectPath == objectPath);
+                if (index < 0)
+                    return true; // Not in store = unsaved changes
 
-                var liveProp = liveSO.FindProperty(prop.propertyPath);
-                if (liveProp == null || liveProp.propertyType != prop.propertyType)
-                    continue;
+                // Found in store - compare values
+                var storedChange = tStore.changes[index];
+                Transform t = go.transform;
+                RectTransform rt = t as RectTransform;
 
-                if (OverrideComparePopupSerialization.PropertiesDiffer(prop, liveProp))
+                if (storedChange.isRectTransform && rt != null)
+                {
+                    if (!Mathf.Approximately(storedChange.anchoredPosition.x, rt.anchoredPosition.x) ||
+                        !Mathf.Approximately(storedChange.anchoredPosition.y, rt.anchoredPosition.y))
+                        return true;
+                    if (!Mathf.Approximately(storedChange.sizeDelta.x, rt.sizeDelta.x) ||
+                        !Mathf.Approximately(storedChange.sizeDelta.y, rt.sizeDelta.y))
+                        return true;
+                    if (!Mathf.Approximately(storedChange.anchorMin.x, rt.anchorMin.x) ||
+                        !Mathf.Approximately(storedChange.anchorMin.y, rt.anchorMin.y))
+                        return true;
+                    if (!Mathf.Approximately(storedChange.anchorMax.x, rt.anchorMax.x) ||
+                        !Mathf.Approximately(storedChange.anchorMax.y, rt.anchorMax.y))
+                        return true;
+                    if (!Mathf.Approximately(storedChange.pivot.x, rt.pivot.x) ||
+                        !Mathf.Approximately(storedChange.pivot.y, rt.pivot.y))
+                        return true;
+                }
+
+                if (!Mathf.Approximately(storedChange.position.x, t.localPosition.x) ||
+                    !Mathf.Approximately(storedChange.position.y, t.localPosition.y) ||
+                    !Mathf.Approximately(storedChange.position.z, t.localPosition.z))
                     return true;
-            }
+                if (!Mathf.Approximately(storedChange.rotation.x, t.localRotation.x) ||
+                    !Mathf.Approximately(storedChange.rotation.y, t.localRotation.y) ||
+                    !Mathf.Approximately(storedChange.rotation.z, t.localRotation.z) ||
+                    !Mathf.Approximately(storedChange.rotation.w, t.localRotation.w))
+                    return true;
+                if (!Mathf.Approximately(storedChange.scale.x, t.localScale.x) ||
+                    !Mathf.Approximately(storedChange.scale.y, t.localScale.y) ||
+                    !Mathf.Approximately(storedChange.scale.z, t.localScale.z))
+                    return true;
 
-            return false;
+                return false; // Values match stored values
+            }
+            else
+            {
+                var cStore = ComponentChangesStore.LoadExisting();
+                if (cStore == null)
+                    return true; // No store = changes not saved
+
+                var type = liveComponent.GetType();
+                string componentType = type.AssemblyQualifiedName;
+                var allOfType = go.GetComponents(type);
+                int compIndex = System.Array.IndexOf(allOfType, liveComponent);
+
+                int index = cStore.changes.FindIndex(c =>
+                    c.scenePath == scenePath &&
+                    c.objectPath == objectPath &&
+                    c.componentType == componentType &&
+                    c.componentIndex == compIndex);
+
+                if (index < 0)
+                    return true; // Not in store = unsaved changes
+
+                // Found in store - compare serialized values
+                var storedChange = cStore.changes[index];
+                var liveSO = new SerializedObject(liveComponent);
+                
+                for (int i = 0; i < storedChange.propertyPaths.Count; i++)
+                {
+                    string propPath = storedChange.propertyPaths[i];
+                    var liveProp = liveSO.FindProperty(propPath);
+                    
+                    if (liveProp != null)
+                    {
+                        string currentSerializedValue = OverrideComparePopupSerialization.SerializeProperty(liveProp);
+                        if (currentSerializedValue != storedChange.serializedValues[i])
+                            return true; // Value differs from stored
+                    }
+                }
+
+                return false; // All values match stored values
+            }
         }
 
         private void RemoveFromStore()

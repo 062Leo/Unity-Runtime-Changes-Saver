@@ -140,7 +140,10 @@ namespace RuntimeChangesSaver.Editor.OverrideComparePopup
             GUILayout.BeginHorizontal();
 
             bool hasUnsavedChanges = Application.isPlaying && interactionHelper.HasUnsavedChanges();
+            
+            GUILayout.BeginVertical();
             OverrideComparePopupUI.DrawFooter(rect, hasUnsavedChanges);
+            GUILayout.EndVertical();
 
             GUILayout.FlexibleSpace();
 
@@ -155,11 +158,12 @@ namespace RuntimeChangesSaver.Editor.OverrideComparePopup
 
             GUILayout.Space(8);
 
+            EditorGUI.BeginDisabledGroup(!hasUnsavedChanges);
             if (GUILayout.Button("Apply", GUILayout.Width(120f), GUILayout.Height(28f)))
             {
                 interactionHelper.ApplyChanges();
-                editorWindow.Close();
             }
+            EditorGUI.EndDisabledGroup();
 
             GUILayout.EndHorizontal();
             GUILayout.EndVertical();
