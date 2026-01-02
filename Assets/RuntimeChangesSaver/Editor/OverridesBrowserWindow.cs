@@ -52,29 +52,8 @@ namespace RuntimeChangesSaver.Editor
 
             if (Application.isPlaying)
             {
-                // play mode changes from in-memory snapshots
-                for (int i = 0; i < sceneCount; i++)
-                {
-                    Scene scene = SceneManager.GetSceneAt(i);
-                    if (!scene.isLoaded)
-                        continue;
-
-                    var list = new List<GameObjectEntry>();
-
-                    GameObject[] roots = scene.GetRootGameObjects();
-                    foreach (GameObject root in roots)
-                    {
-                        CollectChangedGameObjectsRecursive(root, list);
-                    }
-
-                    if (list.Count > 0)
-                    {
-                        _sceneEntries[scene] = list;
-                        _sceneFoldouts[scene] = true;
-                    }
-                }
-
-                // accepted overrides from ScriptableObject stores in play mode
+                // In Play Mode: Only show accepted overrides from ScriptableObject stores
+                // Do NOT show in-memory snapshots that haven't been applied yet
 
                 var transformStore = TransformChangesStore.LoadExisting();
                 if (transformStore != null)
