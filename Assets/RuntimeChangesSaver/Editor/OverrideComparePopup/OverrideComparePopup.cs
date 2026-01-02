@@ -10,6 +10,8 @@ namespace RuntimeChangesSaver.Editor.OverrideComparePopup
     internal class OverrideComparePopupContent : PopupWindowContent
     {
         private readonly Component liveComponent;
+        private readonly bool openedFromBrowser;
+        private readonly System.Action onRefreshRequest;
 
         private OverrideComparePopupSnapshot snapshotHelper;
         private OverrideComparePopupInteraction interactionHelper;
@@ -30,9 +32,11 @@ namespace RuntimeChangesSaver.Editor.OverrideComparePopup
 
         private float targetWindowHeight = -1f;
 
-        public OverrideComparePopupContent(Component component)
+        public OverrideComparePopupContent(Component component, bool openedFromBrowser = false, System.Action onRefreshRequest = null)
         {
             liveComponent = component;
+            this.openedFromBrowser = openedFromBrowser;
+            this.onRefreshRequest = onRefreshRequest;
             InitializePopup();
         }
 
@@ -150,10 +154,26 @@ namespace RuntimeChangesSaver.Editor.OverrideComparePopup
             GUILayout.BeginVertical();
             GUILayout.BeginHorizontal();
 
-            if (GUILayout.Button("Revert", GUILayout.Width(120f), GUILayout.Height(28f)))
+            if (GUILayout.Button("Revert to Original", GUILayout.Width(130f), GUILayout.Height(28f)))
             {
-                interactionHelper.RevertChanges();
-                editorWindow.Close();
+                interactionHelper.RevertToOriginal(openedFromBrowser);
+                onRefreshRequest?.Invoke();
+                if (!openedFromBrowser)
+                {
+                    editorWindow.Close();
+                }
+            }
+
+            GUILayout.Space(4);
+
+            if (GUILayout.Button("Revert to Saved", GUILayout.Width(130f), GUILayout.Height(28f)))
+            {
+                interactionHelper.RevertToSaved(openedFromBrowser);
+                onRefreshRequest?.Invoke();
+                if (!openedFromBrowser)
+                {
+                    editorWindow.Close();
+                }
             }
 
             GUILayout.Space(8);
@@ -161,7 +181,12 @@ namespace RuntimeChangesSaver.Editor.OverrideComparePopup
             EditorGUI.BeginDisabledGroup(!hasUnsavedChanges);
             if (GUILayout.Button("Apply", GUILayout.Width(120f), GUILayout.Height(28f)))
             {
-                interactionHelper.ApplyChanges();
+                interactionHelper.ApplyChanges(openedFromBrowser);
+                onRefreshRequest?.Invoke();
+                if (!openedFromBrowser)
+                {
+                    editorWindow.Close();
+                }
             }
             EditorGUI.EndDisabledGroup();
 

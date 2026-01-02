@@ -402,7 +402,7 @@ namespace RuntimeChangesSaver.Editor
                         {
                             // popup open position below object field row
                             Rect popupRect = new Rect(objectRect.x, objectRect.yMax, objectRect.width, 0f);
-                            PopupWindow.Show(popupRect, new OverrideComparePopupContent(comp));
+                            PopupWindow.Show(popupRect, new OverrideComparePopupContent(comp, openedFromBrowser: true));
                         }
 
                         // make the entire ObjectField clickable to open the compare popup

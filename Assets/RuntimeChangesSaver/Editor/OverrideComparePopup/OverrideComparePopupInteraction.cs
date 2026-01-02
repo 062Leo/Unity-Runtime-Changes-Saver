@@ -61,9 +61,9 @@ namespace RuntimeChangesSaver.Editor.OverrideComparePopup
         }
 
         /// <summary>
-        /// Reverts all changes made in Play Mode back to the snapshot state.
+        /// Reverts all changes made in Play Mode back to the original snapshot state.
         /// </summary>
-        public void RevertChanges()
+        public void RevertToOriginal(bool openedFromBrowser = false)
         {
             if (snapshotComponent == null) return;
 
@@ -100,13 +100,122 @@ namespace RuntimeChangesSaver.Editor.OverrideComparePopup
             }
 
             RemoveFromStore();
-            RefreshBrowserIfOpen();
+            
+            if (openedFromBrowser)
+            {
+                RefreshBrowserIfOpen();
+            }
+        }
+
+        /// <summary>
+        /// Reverts all changes made in Play Mode back to the saved store values.
+        /// </summary>
+        public void RevertToSaved(bool openedFromBrowser = false)
+        {
+            if (liveComponent == null) return;
+
+            var go = liveComponent.gameObject;
+            string scenePath = go.scene.path;
+            if (string.IsNullOrEmpty(scenePath))
+                scenePath = go.scene.name;
+
+            string objectPath = OverrideComparePopupUtilities.GetGameObjectPath(go.transform);
+
+            if (liveComponent is Transform or RectTransform)
+            {
+                var tStore = TransformChangesStore.LoadExisting();
+                if (tStore != null)
+                {
+                    int index = tStore.changes.FindIndex(c => c.scenePath == scenePath && c.objectPath == objectPath);
+                    if (index >= 0)
+                    {
+                        var storedChange = tStore.changes[index];
+                        Transform t = go.transform;
+                        
+                        t.localPosition = storedChange.position;
+                        t.localRotation = storedChange.rotation;
+                        t.localScale = storedChange.scale;
+
+                        RectTransform rt = t as RectTransform;
+                        if (storedChange.isRectTransform && rt != null)
+                        {
+                            rt.anchoredPosition = storedChange.anchoredPosition;
+                            rt.anchoredPosition3D = storedChange.anchoredPosition3D;
+                            rt.anchorMin = storedChange.anchorMin;
+                            rt.anchorMax = storedChange.anchorMax;
+                            rt.pivot = storedChange.pivot;
+                            rt.sizeDelta = storedChange.sizeDelta;
+                            rt.offsetMin = storedChange.offsetMin;
+                            rt.offsetMax = storedChange.offsetMax;
+                        }
+
+                        if (Application.isPlaying)
+                        {
+                            ChangesTrackerCore.ResetTransformBaseline(go);
+                        }
+                    }
+                }
+            }
+            else
+            {
+                var cStore = ComponentChangesStore.LoadExisting();
+                if (cStore != null)
+                {
+                    var type = liveComponent.GetType();
+                    string componentType = type.AssemblyQualifiedName;
+                    var allOfType = go.GetComponents(type);
+                    int compIndex = System.Array.IndexOf(allOfType, liveComponent);
+
+                    int index = cStore.changes.FindIndex(c =>
+                        c.scenePath == scenePath &&
+                        c.objectPath == objectPath &&
+                        c.componentType == componentType &&
+                        c.componentIndex == compIndex);
+
+                    if (index >= 0)
+                    {
+                        var storedChange = cStore.changes[index];
+                        var targetSO = new SerializedObject(liveComponent);
+
+                        for (int i = 0; i < storedChange.propertyPaths.Count; i++)
+                        {
+                            string propPath = storedChange.propertyPaths[i];
+                            var prop = targetSO.FindProperty(propPath);
+                            if (prop != null)
+                            {
+                                OverrideComparePopupSerialization.ApplySerializedComponentValue(prop, storedChange.valueTypes[i], storedChange.serializedValues[i]);
+                            }
+                        }
+
+                        targetSO.ApplyModifiedProperties();
+
+                        if (Application.isPlaying)
+                        {
+                            ChangesTrackerCore.ResetComponentBaseline(liveComponent);
+                        }
+                    }
+                }
+            }
+            
+            if (openedFromBrowser)
+            {
+                RefreshBrowserIfOpen();
+            }
+        }
+
+        /// <summary>
+        /// Reverts all changes made in Play Mode back to the snapshot state.
+        /// </summary>
+        [System.Obsolete("Use RevertToOriginal instead")]
+        public void RevertChanges(bool openedFromBrowser = false)
+        {
+            RevertToOriginal(openedFromBrowser);
         }
 
         /// <summary>
         /// Applies the current Play Mode changes to the acceptance system.
         /// </summary>
-        public void ApplyChanges()
+        public void ApplyChanges(bool openedFromBrowser = false)
         {
             if (liveComponent is Transform or RectTransform)
             {
@@ -117,7 +226,13 @@ namespace RuntimeChangesSaver.Editor.OverrideComparePopup
                 ChangesTrackerCore.AcceptComponentChanges(liveComponent);
             }
 
-            RefreshBrowserIfOpen();
+            // Force editor update to reflect the changes
+            EditorUtility.SetDirty(liveComponent);
+
+            if (openedFromBrowser)
+            {
+                RefreshBrowserIfOpen();
+            }
         }
 
         /// <summary>

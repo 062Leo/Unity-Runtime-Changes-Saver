@@ -85,7 +85,7 @@ namespace RuntimeChangesSaver.Editor
 
             if (GUI.Button(labelRect, content, EditorStyles.label))
             {
-                PopupWindow.Show(rowRect, new OverrideComparePopupContent(component));
+                PopupWindow.Show(rowRect, new OverrideComparePopupContent(component, openedFromBrowser: false, onRefreshRequest: () => RefreshContent(targetGO)));
             }
         }
 
@@ -101,19 +101,27 @@ namespace RuntimeChangesSaver.Editor
             }
 
             // Buttons
-            float buttonWidth = 120f;
-            float buttonHeight = 30f;
-            float spacing = 10f;
-            float totalWidth = buttonWidth * 2 + spacing;
+            float buttonWidth = 100f;
+            float buttonHeight = 28f;
+            float spacing = 6f;
+            float totalWidth = buttonWidth * 3 + spacing * 2;
             float startX = rect.x + (rect.width - totalWidth) / 2;
             float startY = rect.y + (rect.height - buttonHeight) / 2;
 
-            Rect revertRect = new Rect(startX, startY, buttonWidth, buttonHeight);
-            Rect applyRect = new Rect(startX + buttonWidth + spacing, startY, buttonWidth, buttonHeight);
+            Rect revertOriginalRect = new Rect(startX, startY, buttonWidth, buttonHeight);
+            Rect revertSavedRect = new Rect(startX + buttonWidth + spacing, startY, buttonWidth, buttonHeight);
+            Rect applyRect = new Rect(startX + (buttonWidth + spacing) * 2, startY, buttonWidth, buttonHeight);
 
-            if (GUI.Button(revertRect, "Revert All"))
+            if (GUI.Button(revertOriginalRect, "Revert to Original"))
             {
-                RevertAllChanges();
+                RevertToOriginal();
+                RefreshBrowserIfOpen();
+                editorWindow.Close();
+            }
+
+            if (GUI.Button(revertSavedRect, "Revert to Saved"))
+            {
+                RevertToSaved();
                 RefreshBrowserIfOpen();
                 editorWindow.Close();
             }
@@ -126,45 +134,199 @@ namespace RuntimeChangesSaver.Editor
             }
         }
 
-        void RevertAllChanges()
+        void RevertToOriginal()
         {
-            // Revert components
-            var originalSnapshot = ChangesTrackerCore.GetSnapshot(targetGO);
+            string scenePath = targetGO.scene.path;
+            if (string.IsNullOrEmpty(scenePath))
+                scenePath = targetGO.scene.name;
 
-            if (originalSnapshot != null)
+            string objectPath = OverrideComparePopupUtilities.GetGameObjectPath(targetGO.transform);
+
+            // Revert Transform strictly to stored original values
+            var tStore = TransformChangesStore.LoadExisting();
+            if (tStore != null)
             {
-                var transform = targetGO.transform;
-                var rt = transform as RectTransform;
-
-                // Revert transform
-                transform.localPosition = originalSnapshot.position;
-                transform.localRotation = originalSnapshot.rotation;
-                transform.localScale = originalSnapshot.scale;
-
-                if (rt != null && originalSnapshot.isRectTransform)
+                int index = tStore.changes.FindIndex(c => c.scenePath == scenePath && c.objectPath == objectPath);
+                if (index >= 0)
                 {
-                    rt.anchoredPosition = originalSnapshot.anchoredPosition;
-                    rt.anchoredPosition3D = originalSnapshot.anchoredPosition3D;
-                    rt.anchorMin = originalSnapshot.anchorMin;
-                    rt.anchorMax = originalSnapshot.anchorMax;
-                    rt.pivot = originalSnapshot.pivot;
-                    rt.sizeDelta = originalSnapshot.sizeDelta;
-                    rt.offsetMin = originalSnapshot.offsetMin;
-                    rt.offsetMax = originalSnapshot.offsetMax;
+                    var stored = tStore.changes[index];
+                    if (stored.hasOriginalValues)
+                    {
+                        var transform = targetGO.transform;
+                        transform.localPosition = stored.originalPosition;
+                        transform.localRotation = stored.originalRotation;
+                        transform.localScale = stored.originalScale;
+
+                        RectTransform rt = transform as RectTransform;
+                        if (stored.isRectTransform && rt != null)
+                        {
+                            rt.anchoredPosition = stored.originalAnchoredPosition;
+                            rt.anchoredPosition3D = stored.originalAnchoredPosition3D;
+                            rt.anchorMin = stored.originalAnchorMin;
+                            rt.anchorMax = stored.originalAnchorMax;
+                            rt.pivot = stored.originalPivot;
+                            rt.sizeDelta = stored.originalSizeDelta;
+                            rt.offsetMin = stored.originalOffsetMin;
+                            rt.offsetMax = stored.originalOffsetMax;
+                        }
+                    }
                 }
             }
 
-            // Revert other components
+            // Revert other components strictly to stored original values
+            var cStore = ComponentChangesStore.LoadExisting();
             foreach (var comp in changedComponents)
             {
                 if (comp is Transform) continue;
 
-                string compKey = ChangesTrackerCore.GetComponentKey(comp);
-                var snapshot = ChangesTrackerCore.GetComponentSnapshot(targetGO, compKey);
+                if (cStore == null)
+                    continue;
 
-                if (snapshot != null)
+                var type = comp.GetType();
+                string componentType = type.AssemblyQualifiedName;
+                var allOfType = targetGO.GetComponents(type);
+                int compIndex = System.Array.IndexOf(allOfType, comp);
+
+                int idx = cStore.changes.FindIndex(c =>
+                    c.scenePath == scenePath &&
+                    c.objectPath == objectPath &&
+                    c.componentType == componentType &&
+                    c.componentIndex == compIndex);
+
+                if (idx >= 0)
                 {
-                    RevertComponent(comp, snapshot);
+                    var stored = cStore.changes[idx];
+                    if (stored.hasOriginalValues && stored.originalSerializedValues.Count == stored.propertyPaths.Count)
+                    {
+                        var targetSO = new SerializedObject(comp);
+                        for (int i = 0; i < stored.propertyPaths.Count; i++)
+                        {
+                            string propPath = stored.propertyPaths[i];
+                            var prop = targetSO.FindProperty(propPath);
+                            if (prop != null)
+                            {
+                                OverrideComparePopupSerialization.ApplySerializedComponentValue(prop, stored.originalValueTypes[i], stored.originalSerializedValues[i]);
+                            }
+                        }
+                        targetSO.ApplyModifiedProperties();
+                    }
+                }
+            }
+
+            // Remove entries from stores after successful revert to original
+            if (tStore != null)
+            {
+                int removeIndex = tStore.changes.FindIndex(c => c.scenePath == scenePath && c.objectPath == objectPath);
+                if (removeIndex >= 0)
+                {
+                    tStore.changes.RemoveAt(removeIndex);
+                    EditorUtility.SetDirty(tStore);
+                }
+            }
+
+            if (cStore != null)
+            {
+                foreach (var comp in changedComponents)
+                {
+                    if (comp is Transform or RectTransform) continue;
+
+                    var type = comp.GetType();
+                    string componentType = type.AssemblyQualifiedName;
+                    var allOfType = targetGO.GetComponents(type);
+                    int compIndex = System.Array.IndexOf(allOfType, comp);
+
+                    int removeIndex = cStore.changes.FindIndex(c =>
+                        c.scenePath == scenePath &&
+                        c.objectPath == objectPath &&
+                        c.componentType == componentType &&
+                        c.componentIndex == compIndex);
+
+                    if (removeIndex >= 0)
+                    {
+                        cStore.changes.RemoveAt(removeIndex);
+                    }
+                }
+
+                EditorUtility.SetDirty(cStore);
+            }
+
+            AssetDatabase.SaveAssets();
+        }
+
+        void RevertToSaved()
+        {
+            // Revert to stored values in the Store (ComponentChangesStore, TransformChangesStore)
+            string scenePath = targetGO.scene.path;
+            if (string.IsNullOrEmpty(scenePath))
+                scenePath = targetGO.scene.name;
+
+            string objectPath = OverrideComparePopupUtilities.GetGameObjectPath(targetGO.transform);
+
+            // Revert Transform
+            var tStore = TransformChangesStore.LoadExisting();
+            if (tStore != null)
+            {
+                int index = tStore.changes.FindIndex(c => c.scenePath == scenePath && c.objectPath == objectPath);
+                if (index >= 0)
+                {
+                    var storedChange = tStore.changes[index];
+                    Transform t = targetGO.transform;
+                    
+                    t.localPosition = storedChange.position;
+                    t.localRotation = storedChange.rotation;
+                    t.localScale = storedChange.scale;
+
+                    RectTransform rt = t as RectTransform;
+                    if (storedChange.isRectTransform && rt != null)
+                    {
+                        rt.anchoredPosition = storedChange.anchoredPosition;
+                        rt.anchoredPosition3D = storedChange.anchoredPosition3D;
+                        rt.anchorMin = storedChange.anchorMin;
+                        rt.anchorMax = storedChange.anchorMax;
+                        rt.pivot = storedChange.pivot;
+                        rt.sizeDelta = storedChange.sizeDelta;
+                        rt.offsetMin = storedChange.offsetMin;
+                        rt.offsetMax = storedChange.offsetMax;
+                    }
+                }
+            }
+
+            // Revert other components
+            var cStore = ComponentChangesStore.LoadExisting();
+            if (cStore != null)
+            {
+                foreach (var comp in changedComponents)
+                {
+                    if (comp is Transform or RectTransform) continue;
+
+                    var type = comp.GetType();
+                    string componentType = type.AssemblyQualifiedName;
+                    var allOfType = targetGO.GetComponents(type);
+                    int compIndex = System.Array.IndexOf(allOfType, comp);
+
+                    int index = cStore.changes.FindIndex(c =>
+                        c.scenePath == scenePath &&
+                        c.objectPath == objectPath &&
+                        c.componentType == componentType &&
+                        c.componentIndex == compIndex);
+
+                    if (index >= 0)
+                    {
+                        var storedChange = cStore.changes[index];
+                        var targetSO = new SerializedObject(comp);
+
+                        for (int i = 0; i < storedChange.propertyPaths.Count; i++)
+                        {
+                            string propPath = storedChange.propertyPaths[i];
+                            var prop = targetSO.FindProperty(propPath);
+                            if (prop != null)
+                            {
+                                OverrideComparePopupSerialization.ApplySerializedComponentValue(prop, storedChange.valueTypes[i], storedChange.serializedValues[i]);
+                            }
+                        }
+
+                        targetSO.ApplyModifiedProperties();
+                    }
                 }
             }
         }
@@ -247,6 +409,12 @@ namespace RuntimeChangesSaver.Editor
             {
                 OverridesBrowserWindow.Open();
             }
+        }
+
+        private void RefreshContent(GameObject go)
+        {
+            changedComponents.Clear();
+            changedComponents.AddRange(ChangesTrackerCore.GetChangedComponents(go));
         }
     }
 }
