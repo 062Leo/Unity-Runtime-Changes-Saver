@@ -144,6 +144,7 @@ namespace RuntimeChangesSaver.Editor.OverrideComparePopup
             GUILayout.BeginHorizontal();
 
             bool hasUnsavedChanges = Application.isPlaying && interactionHelper.HasUnsavedChanges();
+            bool hasSavedEntry = interactionHelper.HasSavedEntry();
             
             GUILayout.BeginVertical();
             OverrideComparePopupUI.DrawFooter(rect, hasUnsavedChanges);
@@ -166,6 +167,7 @@ namespace RuntimeChangesSaver.Editor.OverrideComparePopup
 
             GUILayout.Space(4);
 
+            EditorGUI.BeginDisabledGroup(!hasSavedEntry);
             if (GUILayout.Button("Revert to Saved", GUILayout.Width(130f), GUILayout.Height(28f)))
             {
                 interactionHelper.RevertToSaved(openedFromBrowser);
@@ -175,6 +177,7 @@ namespace RuntimeChangesSaver.Editor.OverrideComparePopup
                     editorWindow.Close();
                 }
             }
+            EditorGUI.EndDisabledGroup();
 
             GUILayout.Space(8);
 

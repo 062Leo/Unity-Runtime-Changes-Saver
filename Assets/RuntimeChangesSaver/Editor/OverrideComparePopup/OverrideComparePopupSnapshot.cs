@@ -40,29 +40,34 @@ namespace RuntimeChangesSaver.Editor.OverrideComparePopup
 
         private void CreateTransformSnapshot(GameObject go)
         {
-            TransformChangesStore.TransformChange storeMatch = null;
-            var store = TransformChangesStore.LoadExisting();
-            if (store != null)
+            TransformOriginalStore.TransformOriginal originalMatch = null;
+            TransformChangesStore.TransformChange changeMatch = null;
+
+            string scenePath = go.scene.path;
+            if (string.IsNullOrEmpty(scenePath))
+                scenePath = go.scene.name;
+
+            string objectPath = OverrideComparePopupUtilities.GetGameObjectPath(go.transform);
+
+            var originalStore = TransformOriginalStore.LoadExisting();
+            if (originalStore != null)
             {
-                string scenePath = go.scene.path;
-                if (string.IsNullOrEmpty(scenePath))
-                    scenePath = go.scene.name;
-
-                string objectPath = OverrideComparePopupUtilities.GetGameObjectPath(go.transform);
-
-                foreach (var c in store.changes)
-                {
-                    if (c.scenePath == scenePath && c.objectPath == objectPath)
-                    {
-                        storeMatch = c;
-                        break;
-                    }
-                }
+                originalMatch = originalStore.entries.Find(e => e.scenePath == scenePath && e.objectPath == objectPath);
             }
 
-            if (storeMatch != null)
+            var changeStore = TransformChangesStore.LoadExisting();
+            if (changeStore != null)
             {
-                CreateTransformSnapshotFromStore(storeMatch);
+                changeMatch = changeStore.changes.Find(c => c.scenePath == scenePath && c.objectPath == objectPath);
+            }
+
+            if (originalMatch != null)
+            {
+                CreateTransformSnapshotFromOriginal(originalMatch);
+            }
+            else if (changeMatch != null)
+            {
+                CreateTransformSnapshotFromChange(changeMatch);
             }
             else if (Application.isPlaying)
             {
@@ -70,23 +75,39 @@ namespace RuntimeChangesSaver.Editor.OverrideComparePopup
             }
         }
 
-        private void CreateTransformSnapshotFromStore(TransformChangesStore.TransformChange change)
+        private void CreateTransformSnapshotFromOriginal(TransformOriginalStore.TransformOriginal original)
         {
-            bool useOriginal = change.hasOriginalValues;
+            if (original.isRectTransform && liveComponent is RectTransform)
+            {
+                SnapshotComponent = SnapshotGO.AddComponent<RectTransform>();
+            }
+            else
+            {
+                SnapshotComponent = SnapshotGO.transform;
+            }
 
-            Vector3 basePos = useOriginal ? change.originalPosition : change.position;
-            Quaternion baseRot = useOriginal ? change.originalRotation : change.rotation;
-            Vector3 baseScale = useOriginal ? change.originalScale : change.scale;
+            if (SnapshotComponent is RectTransform snapshotRT)
+            {
+                snapshotRT.anchoredPosition = original.anchoredPosition;
+                snapshotRT.anchoredPosition3D = original.anchoredPosition3D;
+                snapshotRT.anchorMin = original.anchorMin;
+                snapshotRT.anchorMax = original.anchorMax;
+                snapshotRT.pivot = original.pivot;
+                snapshotRT.sizeDelta = original.sizeDelta;
+                snapshotRT.offsetMin = original.offsetMin;
+                snapshotRT.offsetMax = original.offsetMax;
+            }
 
-            Vector2 baseAnchoredPos = useOriginal ? change.originalAnchoredPosition : change.anchoredPosition;
-            Vector3 baseAnchoredPos3D = useOriginal ? change.originalAnchoredPosition3D : change.anchoredPosition3D;
-            Vector2 baseAnchorMin = useOriginal ? change.originalAnchorMin : change.anchorMin;
-            Vector2 baseAnchorMax = useOriginal ? change.originalAnchorMax : change.anchorMax;
-            Vector2 basePivot = useOriginal ? change.originalPivot : change.pivot;
-            Vector2 baseSizeDelta = useOriginal ? change.originalSizeDelta : change.sizeDelta;
-            Vector2 baseOffsetMin = useOriginal ? change.originalOffsetMin : change.offsetMin;
-            Vector2 baseOffsetMax = useOriginal ? change.originalOffsetMax : change.offsetMax;
+            SnapshotComponent.transform.localPosition = original.position;
+            SnapshotComponent.transform.localRotation = original.rotation;
+            SnapshotComponent.transform.localScale = original.scale;
 
+            SerializedObject so = new SerializedObject(SnapshotComponent);
+            so.Update();
+        }
+
+        private void CreateTransformSnapshotFromChange(TransformChangesStore.TransformChange change)
+        {
             if (change.isRectTransform && liveComponent is RectTransform)
             {
                 SnapshotComponent = SnapshotGO.AddComponent<RectTransform>();
@@ -98,19 +119,19 @@ namespace RuntimeChangesSaver.Editor.OverrideComparePopup
 
             if (SnapshotComponent is RectTransform snapshotRT)
             {
-                snapshotRT.anchoredPosition = baseAnchoredPos;
-                snapshotRT.anchoredPosition3D = baseAnchoredPos3D;
-                snapshotRT.anchorMin = baseAnchorMin;
-                snapshotRT.anchorMax = baseAnchorMax;
-                snapshotRT.pivot = basePivot;
-                snapshotRT.sizeDelta = baseSizeDelta;
-                snapshotRT.offsetMin = baseOffsetMin;
-                snapshotRT.offsetMax = baseOffsetMax;
+                snapshotRT.anchoredPosition = change.anchoredPosition;
+                snapshotRT.anchoredPosition3D = change.anchoredPosition3D;
+                snapshotRT.anchorMin = change.anchorMin;
+                snapshotRT.anchorMax = change.anchorMax;
+                snapshotRT.pivot = change.pivot;
+                snapshotRT.sizeDelta = change.sizeDelta;
+                snapshotRT.offsetMin = change.offsetMin;
+                snapshotRT.offsetMax = change.offsetMax;
             }
 
-            SnapshotComponent.transform.localPosition = basePos;
-            SnapshotComponent.transform.localRotation = baseRot;
-            SnapshotComponent.transform.localScale = baseScale;
+            SnapshotComponent.transform.localPosition = change.position;
+            SnapshotComponent.transform.localRotation = change.rotation;
+            SnapshotComponent.transform.localScale = change.scale;
 
             SerializedObject so = new SerializedObject(SnapshotComponent);
             so.Update();
@@ -157,50 +178,8 @@ namespace RuntimeChangesSaver.Editor.OverrideComparePopup
             var type = liveComponent.GetType();
             SnapshotComponent = SnapshotGO.AddComponent(type);
 
-            if (Application.isPlaying)
-            {
-                CreateComponentSnapshotFromStore(go, type);
-            }
-            else
-            {
-                CreateComponentSnapshotFromEditMode(go, type);
-            }
-        }
-
-        private void CreateComponentSnapshotFromStore(GameObject go, System.Type type)
-        {
-            ComponentChangesStore.ComponentChange match = null;
-            var compStore = ComponentChangesStore.LoadExisting();
-
-            if (compStore != null)
-            {
-                string scenePath = go.scene.path;
-                if (string.IsNullOrEmpty(scenePath))
-                    scenePath = go.scene.name;
-
-                string objectPath = OverrideComparePopupUtilities.GetGameObjectPath(go.transform);
-                string componentType = type.AssemblyQualifiedName;
-                var allOfType = go.GetComponents(type);
-                int index = System.Array.IndexOf(allOfType, liveComponent);
-
-                foreach (var c in compStore.changes)
-                {
-                    if (c.scenePath == scenePath &&
-                        c.objectPath == objectPath &&
-                        c.componentType == componentType &&
-                        c.componentIndex == index)
-                    {
-                        match = c;
-                        break;
-                    }
-                }
-            }
-
-            if (match != null)
-            {
-                ApplyComponentChangeToSnapshot(match);
-            }
-            else
+            bool appliedFromStore = TryApplyComponentSnapshotFromStores(go, type);
+            if (!appliedFromStore)
             {
                 CreateComponentSnapshotFromLiveSnapshot(go, type);
             }
@@ -235,54 +214,49 @@ namespace RuntimeChangesSaver.Editor.OverrideComparePopup
             }
         }
 
-        private void CreateComponentSnapshotFromEditMode(GameObject go, System.Type type)
+        private bool TryApplyComponentSnapshotFromStores(GameObject go, System.Type type)
         {
-            var compStore = ComponentChangesStore.LoadExisting();
-            ComponentChangesStore.ComponentChange match = null;
+            string scenePath = go.scene.path;
+            if (string.IsNullOrEmpty(scenePath))
+                scenePath = go.scene.name;
 
-            if (compStore != null)
+            string objectPath = OverrideComparePopupUtilities.GetGameObjectPath(go.transform);
+            string componentType = type.AssemblyQualifiedName;
+            var allOfType = go.GetComponents(type);
+            int index = System.Array.IndexOf(allOfType, liveComponent);
+
+            var originalStore = ComponentOriginalStore.LoadExisting();
+            var originalMatch = originalStore?.entries.Find(e =>
+                e.scenePath == scenePath &&
+                e.objectPath == objectPath &&
+                e.componentType == componentType &&
+                e.componentIndex == index);
+
+            if (originalMatch != null)
             {
-                string scenePath = go.scene.path;
-                if (string.IsNullOrEmpty(scenePath))
-                    scenePath = go.scene.name;
-
-                string objectPath = OverrideComparePopupUtilities.GetGameObjectPath(go.transform);
-                string componentType = type.AssemblyQualifiedName;
-                var allOfType = go.GetComponents(type);
-                int index = System.Array.IndexOf(allOfType, liveComponent);
-
-                foreach (var c in compStore.changes)
-                {
-                    if (c.scenePath == scenePath &&
-                        c.objectPath == objectPath &&
-                        c.componentType == componentType &&
-                        c.componentIndex == index)
-                    {
-                        match = c;
-                        break;
-                    }
-                }
+                ApplyComponentOriginalToSnapshot(originalMatch);
+                return true;
             }
 
-            if (match != null)
+            var changeStore = ComponentChangesStore.LoadExisting();
+            var changeMatch = changeStore?.changes.Find(c =>
+                c.scenePath == scenePath &&
+                c.objectPath == objectPath &&
+                c.componentType == componentType &&
+                c.componentIndex == index);
+
+            if (changeMatch != null)
             {
-                ApplyComponentChangeToSnapshot(match);
+                ApplyComponentChangeToSnapshot(changeMatch);
+                return true;
             }
+
+            return false;
         }
 
         private void ApplyComponentChangeToSnapshot(ComponentChangesStore.ComponentChange match)
         {
             SerializedObject so = new SerializedObject(SnapshotComponent);
-
-            var baseValues = (match is { hasOriginalValues: true, originalSerializedValues: not null } &&
-                              match.originalSerializedValues.Count == match.propertyPaths.Count)
-                ? match.originalSerializedValues
-                : match.serializedValues;
-
-            var baseTypes = (match is { hasOriginalValues: true, originalValueTypes: not null } &&
-                             match.originalValueTypes.Count == match.propertyPaths.Count)
-                ? match.originalValueTypes
-                : match.valueTypes;
 
             for (int i = 0; i < match.propertyPaths.Count; i++)
             {
@@ -291,8 +265,35 @@ namespace RuntimeChangesSaver.Editor.OverrideComparePopup
                 if (prop == null)
                     continue;
 
-                string typeName = (i < baseTypes.Count) ? baseTypes[i] : string.Empty;
-                string value = (i < baseValues.Count) ? baseValues[i] : string.Empty;
+                string typeName = (i < match.valueTypes.Count) ? match.valueTypes[i] : string.Empty;
+                string value = (i < match.serializedValues.Count) ? match.serializedValues[i] : string.Empty;
+
+                try
+                {
+                    OverrideComparePopupSerialization.ApplySerializedComponentValue(prop, typeName, value);
+                }
+                catch
+                {
+                    // ignored
+                }
+            }
+
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        private void ApplyComponentOriginalToSnapshot(ComponentOriginalStore.ComponentOriginal match)
+        {
+            SerializedObject so = new SerializedObject(SnapshotComponent);
+
+            for (int i = 0; i < match.propertyPaths.Count; i++)
+            {
+                string path = match.propertyPaths[i];
+                SerializedProperty prop = so.FindProperty(path);
+                if (prop == null)
+                    continue;
+
+                string typeName = (i < match.valueTypes.Count) ? match.valueTypes[i] : string.Empty;
+                string value = (i < match.serializedValues.Count) ? match.serializedValues[i] : string.Empty;
 
                 try
                 {

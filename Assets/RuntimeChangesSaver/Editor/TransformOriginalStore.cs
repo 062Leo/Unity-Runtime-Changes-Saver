@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using UnityEditor;
@@ -6,42 +6,50 @@ using UnityEngine;
 
 namespace RuntimeChangesSaver.Editor
 {
-    public class ComponentChangesStore : ScriptableObject
+    public class TransformOriginalStore : ScriptableObject
     {
         [Serializable]
-        public class ComponentChange
+        public class TransformOriginal
         {
             public string scenePath;
             public string objectPath;
-            public string componentType;
-            public int componentIndex;
+            public bool isRectTransform;
 
-            public List<string> propertyPaths = new List<string>();
-            public List<string> serializedValues = new List<string>();
-            public List<string> valueTypes = new List<string>();
+            public Vector3 position;
+            public Quaternion rotation;
+            public Vector3 scale;
+
+            public Vector2 anchoredPosition;
+            public Vector3 anchoredPosition3D;
+            public Vector2 anchorMin;
+            public Vector2 anchorMax;
+            public Vector2 pivot;
+            public Vector2 sizeDelta;
+            public Vector2 offsetMin;
+            public Vector2 offsetMax;
         }
 
-        public List<ComponentChange> changes = new List<ComponentChange>();
+        public List<TransformOriginal> entries = new List<TransformOriginal>();
 
-        public static ComponentChangesStore LoadExisting()
+        public static TransformOriginalStore LoadExisting()
         {
-            string[] guids = AssetDatabase.FindAssets($"t:{nameof(ComponentChangesStore)}");
+            string[] guids = AssetDatabase.FindAssets("t:TransformOriginalStore");
             if (guids is { Length: > 0 })
             {
                 string path = AssetDatabase.GUIDToAssetPath(guids[0]);
-                return AssetDatabase.LoadAssetAtPath<ComponentChangesStore>(path);
+                return AssetDatabase.LoadAssetAtPath<TransformOriginalStore>(path);
             }
 
             return null;
         }
 
-        public static ComponentChangesStore LoadOrCreate()
+        public static TransformOriginalStore LoadOrCreate()
         {
             var store = LoadExisting();
             if (store == null)
             {
                 string assetPath = GetDefaultAssetPath();
-                store = CreateInstance<ComponentChangesStore>();
+                store = CreateInstance<TransformOriginalStore>();
                 AssetDatabase.CreateAsset(store, assetPath);
                 AssetDatabase.SaveAssets();
             }
@@ -51,8 +59,8 @@ namespace RuntimeChangesSaver.Editor
 
         private static string GetRuntimeChangesSaverRootFolder()
         {
-            // locate script asset, walk up to RuntimeChangesSaver under Assets
-            string[] scriptGuids = AssetDatabase.FindAssets($"{nameof(ComponentChangesStore)} t:Script");
+            string[] scriptGuids = AssetDatabase.FindAssets("TransformOriginalStore t:Script");
+
             if (scriptGuids is { Length: > 0 })
             {
                 string scriptPath = AssetDatabase.GUIDToAssetPath(scriptGuids[0]);
@@ -60,7 +68,6 @@ namespace RuntimeChangesSaver.Editor
                 {
                     string dir = Path.GetDirectoryName(scriptPath)?.Replace("\\", "/");
 
-                    // walk up until RuntimeChangesSaver or Assets root
                     while (!string.IsNullOrEmpty(dir) && dir.StartsWith("Assets"))
                     {
                         string folderName = Path.GetFileName(dir);
@@ -76,18 +83,15 @@ namespace RuntimeChangesSaver.Editor
                         dir = parent.Replace("\\", "/");
                     }
 
-                    // fallback: no RuntimeChangesSaver, use script folder as root
                     return Path.GetDirectoryName(scriptPath)?.Replace("\\", "/");
                 }
             }
 
-            // fallback: Assets root
             return "Assets";
         }
 
         private static string GetDefaultAssetPath()
         {
-            // asset inside RuntimeChangesSaver/Scriptable_Objects, avoid hardcoded Assets path
             string runtimeFolder = GetRuntimeChangesSaverRootFolder();
             string soFolder = runtimeFolder + "/Scriptable_Objects";
 
@@ -96,13 +100,13 @@ namespace RuntimeChangesSaver.Editor
                 AssetDatabase.CreateFolder(runtimeFolder, "Scriptable_Objects");
             }
 
-            string assetPath = Path.Combine(soFolder, "ComponentChangesStore.asset");
+            string assetPath = Path.Combine(soFolder, "TransformOriginalStore.asset");
             return assetPath.Replace("\\", "/");
         }
 
         public void Clear()
         {
-            changes.Clear();
+            entries.Clear();
             EditorUtility.SetDirty(this);
         }
     }

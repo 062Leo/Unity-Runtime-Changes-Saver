@@ -325,11 +325,21 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker
             var componentStore = ComponentChangesStore.LoadExisting();
             if (componentStore != null)
                 componentStore.Clear();
+
+            var transformOriginalStore = TransformOriginalStore.LoadExisting();
+            if (transformOriginalStore != null)
+                transformOriginalStore.Clear();
+
+            var componentOriginalStore = ComponentOriginalStore.LoadExisting();
+            if (componentOriginalStore != null)
+                componentOriginalStore.Clear();
         }
 
         private static void RecordTransformChangeToStore(GameObject go, TransformSnapshot original, TransformSnapshot current)
         {
             var store = TransformChangesStore.LoadOrCreate();
+            TransformOriginalStore originalStore = null;
+            bool originalStored = false;
 
             string scenePath = go.scene.path;
             string objectPath = SceneAndPathUtilities.GetGameObjectPath(go.transform);
@@ -337,55 +347,34 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker
             List<string> modifiedProps = original != null 
                 ? SnapshotManager.GetChangedProperties(original, current)
                 : new List<string> { "position", "rotation", "scale" };
-
-            var existingIndex = store.changes.FindIndex(c => c.scenePath == scenePath && c.objectPath == objectPath);
-
-            bool hasOriginal = false;
-            Vector3 originalPosition = Vector3.zero;
-            Quaternion originalRotation = Quaternion.identity;
-            Vector3 originalScale = Vector3.one;
-            Vector2 originalAnchoredPosition = Vector2.zero;
-            Vector3 originalAnchoredPosition3D = Vector3.zero;
-            Vector2 originalAnchorMin = Vector2.zero;
-            Vector2 originalAnchorMax = Vector2.one;
-            Vector2 originalPivot = new Vector2(0.5f, 0.5f);
-            Vector2 originalSizeDelta = Vector2.zero;
-            Vector2 originalOffsetMin = Vector2.zero;
-            Vector2 originalOffsetMax = Vector2.zero;
-
-            if (existingIndex >= 0 && store.changes[existingIndex].hasOriginalValues)
+            if (original != null)
             {
-                var existing = store.changes[existingIndex];
-                hasOriginal = true;
-                originalPosition = existing.originalPosition;
-                originalRotation = existing.originalRotation;
-                originalScale = existing.originalScale;
-                originalAnchoredPosition = existing.originalAnchoredPosition;
-                originalAnchoredPosition3D = existing.originalAnchoredPosition3D;
-                originalAnchorMin = existing.originalAnchorMin;
-                originalAnchorMax = existing.originalAnchorMax;
-                originalPivot = existing.originalPivot;
-                originalSizeDelta = existing.originalSizeDelta;
-                originalOffsetMin = existing.originalOffsetMin;
-                originalOffsetMax = existing.originalOffsetMax;
-            }
-            else if (original != null)
-            {
-                hasOriginal = true;
-                originalPosition = original.position;
-                originalRotation = original.rotation;
-                originalScale = original.scale;
+                originalStore = TransformOriginalStore.LoadOrCreate();
+                int originalIndex = originalStore.entries.FindIndex(e => e.scenePath == scenePath && e.objectPath == objectPath);
 
-                if (original.isRectTransform)
+                if (originalIndex < 0)
                 {
-                    originalAnchoredPosition = original.anchoredPosition;
-                    originalAnchoredPosition3D = original.anchoredPosition3D;
-                    originalAnchorMin = original.anchorMin;
-                    originalAnchorMax = original.anchorMax;
-                    originalPivot = original.pivot;
-                    originalSizeDelta = original.sizeDelta;
-                    originalOffsetMin = original.offsetMin;
-                    originalOffsetMax = original.offsetMax;
+                    var entry = new TransformOriginalStore.TransformOriginal
+                    {
+                        scenePath = scenePath,
+                        objectPath = objectPath,
+                        isRectTransform = original.isRectTransform,
+                        position = original.position,
+                        rotation = original.rotation,
+                        scale = original.scale,
+                        anchoredPosition = original.isRectTransform ? original.anchoredPosition : Vector2.zero,
+                        anchoredPosition3D = original.isRectTransform ? original.anchoredPosition3D : Vector3.zero,
+                        anchorMin = original.isRectTransform ? original.anchorMin : Vector2.zero,
+                        anchorMax = original.isRectTransform ? original.anchorMax : Vector2.one,
+                        pivot = original.isRectTransform ? original.pivot : new Vector2(0.5f, 0.5f),
+                        sizeDelta = original.isRectTransform ? original.sizeDelta : Vector2.zero,
+                        offsetMin = original.isRectTransform ? original.offsetMin : Vector2.zero,
+                        offsetMax = original.isRectTransform ? original.offsetMax : Vector2.zero
+                    };
+
+                    originalStore.entries.Add(entry);
+                    EditorUtility.SetDirty(originalStore);
+                    originalStored = true;
                 }
             }
 
@@ -405,21 +394,10 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker
                 sizeDelta = current.sizeDelta,
                 offsetMin = current.offsetMin,
                 offsetMax = current.offsetMax,
-                modifiedProperties = modifiedProps,
-                hasOriginalValues = hasOriginal,
-                originalPosition = originalPosition,
-                originalRotation = originalRotation,
-                originalScale = originalScale,
-                originalAnchoredPosition = originalAnchoredPosition,
-                originalAnchoredPosition3D = originalAnchoredPosition3D,
-                originalAnchorMin = originalAnchorMin,
-                originalAnchorMax = originalAnchorMax,
-                originalPivot = originalPivot,
-                originalSizeDelta = originalSizeDelta,
-                originalOffsetMin = originalOffsetMin,
-                originalOffsetMax = originalOffsetMax
+                modifiedProperties = modifiedProps
             };
 
+            var existingIndex = store.changes.FindIndex(c => c.scenePath == scenePath && c.objectPath == objectPath);
             if (existingIndex >= 0)
                 store.changes[existingIndex] = change;
             else
@@ -432,6 +410,8 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker
         private static void RecordComponentChangeToStore(Component comp, ComponentSnapshot originalSnapshot)
         {
             var store = ComponentChangesStore.LoadOrCreate();
+            ComponentOriginalStore originalStore = null;
+            bool originalStored = false;
 
             string scenePath = comp.gameObject.scene.path;
             string objectPath = SceneAndPathUtilities.GetGameObjectPath(comp.transform);
@@ -460,36 +440,49 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker
 
             int existing = store.changes.FindIndex(c => c.scenePath == scenePath && c.objectPath == objectPath && c.componentType == comp.GetType().AssemblyQualifiedName && c.componentIndex == index);
 
-            bool hasOriginal = false;
-            List<string> originalValues = new List<string>();
-            List<string> originalTypes = new List<string>();
-
-            if (existing >= 0 && store.changes[existing].hasOriginalValues)
+            if (originalSnapshot != null)
             {
-                var existingChange = store.changes[existing];
-                hasOriginal = true;
-                if (existingChange.originalSerializedValues != null)
-                    originalValues.AddRange(existingChange.originalSerializedValues);
-                if (existingChange.originalValueTypes != null)
-                    originalTypes.AddRange(existingChange.originalValueTypes);
-            }
-            else if (originalSnapshot != null)
-            {
-                hasOriginal = true;
+                originalStore = ComponentOriginalStore.LoadOrCreate();
+                bool alreadyStored = originalStore.entries.Exists(e =>
+                    e.scenePath == scenePath &&
+                    e.objectPath == objectPath &&
+                    e.componentType == comp.GetType().AssemblyQualifiedName &&
+                    e.componentIndex == index);
 
-                foreach (var path in propertyPaths)
+                if (!alreadyStored)
                 {
-                    if (originalSnapshot.properties != null && originalSnapshot.properties.TryGetValue(path, out var originalValue) && originalValue != null)
+                    var originalValues = new List<string>();
+                    var originalTypes = new List<string>();
+
+                    foreach (var path in propertyPaths)
                     {
-                        Serialization.SnapshotSerializer.SerializeValue(originalValue, out string typeName, out string serializedValue);
-                        originalTypes.Add(typeName);
-                        originalValues.Add(serializedValue);
+                        if (originalSnapshot.properties != null && originalSnapshot.properties.TryGetValue(path, out var originalValue) && originalValue != null)
+                        {
+                            Serialization.SnapshotSerializer.SerializeValue(originalValue, out string typeName, out string serializedValue);
+                            originalTypes.Add(typeName);
+                            originalValues.Add(serializedValue);
+                        }
+                        else
+                        {
+                            originalTypes.Add(string.Empty);
+                            originalValues.Add(string.Empty);
+                        }
                     }
-                    else
+
+                    var originalEntry = new ComponentOriginalStore.ComponentOriginal
                     {
-                        originalTypes.Add(string.Empty);
-                        originalValues.Add(string.Empty);
-                    }
+                        scenePath = scenePath,
+                        objectPath = objectPath,
+                        componentType = comp.GetType().AssemblyQualifiedName,
+                        componentIndex = index,
+                        propertyPaths = new List<string>(propertyPaths),
+                        serializedValues = originalValues,
+                        valueTypes = originalTypes
+                    };
+
+                    originalStore.entries.Add(originalEntry);
+                    EditorUtility.SetDirty(originalStore);
+                    originalStored = true;
                 }
             }
 
@@ -501,10 +494,7 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker
                 componentIndex = index,
                 propertyPaths = propertyPaths,
                 serializedValues = values,
-                valueTypes = typeNames,
-                hasOriginalValues = hasOriginal,
-                originalSerializedValues = originalValues,
-                originalValueTypes = originalTypes
+                valueTypes = typeNames
             };
 
             if (existing >= 0)

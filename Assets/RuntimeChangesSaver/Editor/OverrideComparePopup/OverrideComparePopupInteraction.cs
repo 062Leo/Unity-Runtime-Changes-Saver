@@ -343,6 +343,48 @@ namespace RuntimeChangesSaver.Editor.OverrideComparePopup
             }
         }
 
+        /// <summary>
+        /// Returns true if a saved entry exists for the current live component in the stores.
+        /// </summary>
+        public bool HasSavedEntry()
+        {
+            if (liveComponent == null)
+                return false;
+
+            var go = liveComponent.gameObject;
+            string scenePath = go.scene.path;
+            if (string.IsNullOrEmpty(scenePath))
+                scenePath = go.scene.name;
+
+            string objectPath = OverrideComparePopupUtilities.GetGameObjectPath(go.transform);
+
+            if (liveComponent is Transform or RectTransform)
+            {
+                var tStore = TransformChangesStore.LoadExisting();
+                if (tStore == null) return false;
+                int index = tStore.changes.FindIndex(c => c.scenePath == scenePath && c.objectPath == objectPath);
+                return index >= 0;
+            }
+            else
+            {
+                var cStore = ComponentChangesStore.LoadExisting();
+                if (cStore == null) return false;
+
+                var type = liveComponent.GetType();
+                string componentType = type.AssemblyQualifiedName;
+                var allOfType = go.GetComponents(type);
+                int compIndex = System.Array.IndexOf(allOfType, liveComponent);
+
+                int index = cStore.changes.FindIndex(c =>
+                    c.scenePath == scenePath &&
+                    c.objectPath == objectPath &&
+                    c.componentType == componentType &&
+                    c.componentIndex == compIndex);
+
+                return index >= 0;
+            }
+        }
+
         private void RemoveFromStore()
         {
             if (liveComponent == null) return;
