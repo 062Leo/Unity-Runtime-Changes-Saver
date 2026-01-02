@@ -1,5 +1,6 @@
 ﻿using UnityEditor;
 using UnityEngine;
+using RuntimeChangesSaver.Editor.ChangesTracker;
 
 namespace RuntimeChangesSaver.Editor
 {
@@ -122,7 +123,7 @@ namespace RuntimeChangesSaver.Editor
                 {
                     // No matching TransformChange entry in store; use stored snapshot as original state
 
-                    var originalSnapshot = ChangesTracker.GetSnapshot(go);
+                    var originalSnapshot = ChangesTrackerCore.GetSnapshot(go);
 
                     if (originalSnapshot != null)
                     {
@@ -239,8 +240,8 @@ namespace RuntimeChangesSaver.Editor
                     {
                         // Fallback: use ComponentSnapshot when no store entry
 
-                        string compKey = ChangesTracker.GetComponentKey(liveComponent);
-                        var snapshot = ChangesTracker.GetComponentSnapshot(go, compKey);
+                        string compKey = ChangesTrackerCore.GetComponentKey(liveComponent);
+                        var snapshot = ChangesTrackerCore.GetComponentSnapshot(go, compKey);
 
                         if (snapshot != null)
                         {
@@ -722,11 +723,11 @@ private void HandleMouseWheel(Rect rect, bool needsScrolling)
                 // Transform changes acceptance for this GameObject and persistence for later transition to Edit Mode.
                 if (liveComponent is Transform or RectTransform)
                 {
-                    ChangesTracker.AcceptTransformChanges(liveComponent.gameObject);
+                    ChangesTrackerCore.AcceptTransformChanges(liveComponent.gameObject);
                 }
                 else
                 {
-                    ChangesTracker.AcceptComponentChanges(liveComponent);
+                    ChangesTrackerCore.AcceptComponentChanges(liveComponent);
                 }
 
                 RefreshBrowserIfOpen();
@@ -832,11 +833,11 @@ private void HandleMouseWheel(Rect rect, bool needsScrolling)
             {
                 if (liveComponent is Transform or RectTransform)
                 {
-                    ChangesTracker.ResetTransformBaseline(liveComponent.gameObject);
+                    ChangesTrackerCore.ResetTransformBaseline(liveComponent.gameObject);
                 }
                 else
                 {
-                    ChangesTracker.ResetComponentBaseline(liveComponent);
+                    ChangesTrackerCore.ResetComponentBaseline(liveComponent);
                 }
             }
 

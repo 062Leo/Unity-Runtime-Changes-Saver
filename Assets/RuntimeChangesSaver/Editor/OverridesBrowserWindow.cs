@@ -2,6 +2,7 @@
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using RuntimeChangesSaver.Editor.ChangesTracker;
 
 namespace RuntimeChangesSaver.Editor
 {
@@ -194,7 +195,7 @@ namespace RuntimeChangesSaver.Editor
 
         private void CollectChangedGameObjectsRecursive(GameObject go, List<GameObjectEntry> list)
         {
-            var changed = ChangesTracker.GetChangedComponents(go);
+            var changed = ChangesTrackerCore.GetChangedComponents(go);
             if (changed is { Count: > 0 })
             {
                 var entry = new GameObjectEntry

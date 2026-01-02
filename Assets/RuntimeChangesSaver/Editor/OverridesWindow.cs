@@ -1,6 +1,7 @@
-﻿using System.Collections.Generic;
+﻿﻿using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
+using RuntimeChangesSaver.Editor.ChangesTracker;
 
 namespace RuntimeChangesSaver.Editor
 {
@@ -16,7 +17,7 @@ namespace RuntimeChangesSaver.Editor
         public OverridesWindow(GameObject go)
         {
             targetGO = go;
-            changedComponents = ChangesTracker.GetChangedComponents(go);
+            changedComponents = ChangesTrackerCore.GetChangedComponents(go);
         }
 
         public override Vector2 GetWindowSize()
@@ -127,7 +128,7 @@ namespace RuntimeChangesSaver.Editor
         void RevertAllChanges()
         {
             // Revert components
-            var originalSnapshot = ChangesTracker.GetSnapshot(targetGO);
+            var originalSnapshot = ChangesTrackerCore.GetSnapshot(targetGO);
 
             if (originalSnapshot != null)
             {
@@ -157,8 +158,8 @@ namespace RuntimeChangesSaver.Editor
             {
                 if (comp is Transform) continue;
 
-                string compKey = ChangesTracker.GetComponentKey(comp);
-                var snapshot = ChangesTracker.GetComponentSnapshot(targetGO, compKey);
+                string compKey = ChangesTrackerCore.GetComponentKey(comp);
+                var snapshot = ChangesTrackerCore.GetComponentSnapshot(targetGO, compKey);
 
                 if (snapshot != null)
                 {
@@ -182,7 +183,7 @@ namespace RuntimeChangesSaver.Editor
 
             if (hasTransformChange)
             {
-                ChangesTracker.AcceptTransformChanges(targetGO);
+                ChangesTrackerCore.AcceptTransformChanges(targetGO);
             }
 
             // Non-transform acceptance
@@ -192,7 +193,7 @@ namespace RuntimeChangesSaver.Editor
                 if (comp is null or Transform)
                     continue;
 
-                ChangesTracker.AcceptComponentChanges(comp);
+                ChangesTrackerCore.AcceptComponentChanges(comp);
             }
 
             //Debug.Log($"[TransformDebug][OverridesWindow.ApplyAll] Accepted all changes on GO='{targetGO.name}' (will be applied when exiting play mode)");

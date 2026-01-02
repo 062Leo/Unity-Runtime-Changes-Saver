@@ -1,5 +1,6 @@
 ﻿using UnityEditor;
 using UnityEngine;
+using RuntimeChangesSaver.Editor.ChangesTracker;
 
 namespace RuntimeChangesSaver.Editor
 {
@@ -33,7 +34,7 @@ namespace RuntimeChangesSaver.Editor
                 return;
 
             // check for changed components
-            var changedComponents = ChangesTracker.GetChangedComponents(go);
+            var changedComponents = ChangesTrackerCore.GetChangedComponents(go);
             bool hasChanges = changedComponents.Count > 0;
 
             EditorGUILayout.BeginHorizontal(EditorStyles.helpBox);
