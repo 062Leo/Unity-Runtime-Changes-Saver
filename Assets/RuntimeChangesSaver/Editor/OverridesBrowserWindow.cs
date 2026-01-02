@@ -3,6 +3,7 @@ using UnityEditor;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using RuntimeChangesSaver.Editor.ChangesTracker;
+using RuntimeChangesSaver.Editor.OverrideComparePopup;
 
 namespace RuntimeChangesSaver.Editor
 {
@@ -12,7 +13,6 @@ namespace RuntimeChangesSaver.Editor
         {
             public GameObject GameObject;
             public List<Component> ChangedComponents = new List<Component>();
-            public bool Expanded = true;
         }
 
         private readonly Dictionary<Scene, List<GameObjectEntry>> _sceneEntries = new Dictionary<Scene, List<GameObjectEntry>>();
@@ -99,7 +99,7 @@ namespace RuntimeChangesSaver.Editor
                         var entry = list.Find(e => e.GameObject == go);
                         if (entry == null)
                         {
-                            entry = new GameObjectEntry { GameObject = go, Expanded = false };
+                            entry = new GameObjectEntry { GameObject = go };
                             list.Add(entry);
                         }
 
@@ -145,7 +145,7 @@ namespace RuntimeChangesSaver.Editor
                         var entry = list.Find(e => e.GameObject == go);
                         if (entry == null)
                         {
-                            entry = new GameObjectEntry { GameObject = go, Expanded = false };
+                            entry = new GameObjectEntry { GameObject = go };
                             list.Add(entry);
                         }
 
@@ -201,8 +201,7 @@ namespace RuntimeChangesSaver.Editor
                 var entry = new GameObjectEntry
                 {
                     GameObject = go,
-                    ChangedComponents = changed,
-                    Expanded = false
+                    ChangedComponents = changed
                 };
                 list.Add(entry);
             }
@@ -231,7 +230,7 @@ namespace RuntimeChangesSaver.Editor
 
             if (!goDict.TryGetValue(go, out var entry))
             {
-                entry = new GameObjectEntry { GameObject = go, Expanded = false };
+                entry = new GameObjectEntry { GameObject = go };
                 goDict[go] = entry;
             }
 
@@ -271,7 +270,7 @@ namespace RuntimeChangesSaver.Editor
 
             if (!goDict.TryGetValue(go, out var entry))
             {
-                entry = new GameObjectEntry { GameObject = go, Expanded = false };
+                entry = new GameObjectEntry { GameObject = go };
                 goDict[go] = entry;
             }
 
@@ -424,7 +423,7 @@ namespace RuntimeChangesSaver.Editor
                         {
                             // popup open position below object field row
                             Rect popupRect = new Rect(objectRect.x, objectRect.yMax, objectRect.width, 0f);
-                            PopupWindow.Show(popupRect, new OverrideComparePopup(comp));
+                            PopupWindow.Show(popupRect, new OverrideComparePopupContent(comp));
                         }
 
                         // make the entire ObjectField clickable to open the compare popup

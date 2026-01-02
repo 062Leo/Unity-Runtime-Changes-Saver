@@ -2,6 +2,7 @@
 using UnityEditor;
 using UnityEngine;
 using RuntimeChangesSaver.Editor.ChangesTracker;
+using RuntimeChangesSaver.Editor.OverrideComparePopup;
 
 namespace RuntimeChangesSaver.Editor
 {
@@ -84,7 +85,7 @@ namespace RuntimeChangesSaver.Editor
 
             if (GUI.Button(labelRect, content, EditorStyles.label))
             {
-                PopupWindow.Show(rowRect, new OverrideComparePopup(component));
+                PopupWindow.Show(rowRect, new OverrideComparePopupContent(component));
             }
         }
 
