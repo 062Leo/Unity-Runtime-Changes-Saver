@@ -39,8 +39,10 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker.PlayModeFlow
                 }
             }
 
-            EditorUtility.SetDirty(tStore);
-            EditorUtility.SetDirty(cStore);
+            if (tStore != null)
+                EditorUtility.SetDirty(tStore);
+            if (cStore != null)
+                EditorUtility.SetDirty(cStore);
             AssetDatabase.SaveAssets();
             
             Debug.Log($"[PlayOverrides][RemoveChangesForSceneFromStore] Changes for scene '{targetScenePath}' have been removed and saved");
