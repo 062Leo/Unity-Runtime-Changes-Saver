@@ -6,6 +6,7 @@ namespace RuntimeChangesSaver.Editor
     internal class OverrideComparePopup : PopupWindowContent
     {
         private readonly Component liveComponent;
+
         private GameObject snapshotGO;
         private Component snapshotComponent;
         private UnityEditor.Editor leftEditor;
@@ -26,6 +27,11 @@ namespace RuntimeChangesSaver.Editor
         private float currentWindowHeight = -1f;
         private float targetWindowHeight = -1f;
         private bool initialSizeSet = false;
+
+        // Drag-and-Drop Variablen
+        private bool isDragging = false;
+        private Vector2 dragLastMousePos = Vector2.zero;
+        private const float DragHeaderHeight = 20f;
         
         public OverrideComparePopup(Component component)
         {
@@ -472,6 +478,9 @@ public override void OnGUI(Rect rect)
 {
     if (leftEditor == null || rightEditor == null) return;
 
+    // 0. DRAG-HANDLING
+    HandleDragAndDrop(rect);
+
     // 1. DYNAMISCHE GRÖSSEN-ANPASSUNG
     // Wir messen ständig, wie viel Platz der Inhalt UNTER dem aktuellen Fenster bräuchte
     float extraSpaceNeeded = Mathf.Max(leftMaxScroll, rightMaxScroll);
@@ -536,9 +545,6 @@ private void HandleMouseWheel(Rect rect, bool needsScrolling)
         Event.current.Use();
     }
 }
-
-
-
 
         void DrawSynchronizedColumn(float width, float height, UnityEditor.Editor editor, float scrollValue, ref float maxScroll, bool editable)
         {
@@ -680,10 +686,28 @@ private void HandleMouseWheel(Rect rect, bool needsScrolling)
         void DrawFooter(Rect rect)
         {
             GUILayout.BeginArea(rect);
+
+            GUILayout.Space(2);
+            GUILayout.BeginHorizontal();
+
+            // INFO-BEREICH LINKS (60 % BREITE), nur im Play Mode mit Änderungen
+            if (Application.isPlaying && HasUnsavedChangesComparedToSnapshot())
+            {
+                float infoWidth = rect.width * 0.6f;
+                GUILayout.BeginVertical(GUILayout.Width(infoWidth));
+                EditorGUILayout.HelpBox("Current Play Mode changes differ from the stored overrides and have not been applied yet.", MessageType.Info);
+                GUILayout.EndVertical();
+            }
+            else
+            {
+                GUILayout.Space(rect.width * 0.6f);
+            }
+
             GUILayout.FlexibleSpace();
 
+            // BUTTONS RECHTS
+            GUILayout.BeginVertical();
             GUILayout.BeginHorizontal();
-            GUILayout.FlexibleSpace();
 
             if (GUILayout.Button("Revert", GUILayout.Width(120f), GUILayout.Height(28f)))
             {
@@ -709,11 +733,59 @@ private void HandleMouseWheel(Rect rect, bool needsScrolling)
                 editorWindow.Close();
             }
 
-            GUILayout.Space(8);
+            GUILayout.EndHorizontal();
+            GUILayout.EndVertical();
+
             GUILayout.EndHorizontal();
 
-            GUILayout.Space(6);
             GUILayout.EndArea();
+        }
+
+        bool HasUnsavedChangesComparedToSnapshot()
+        {
+            if (snapshotComponent == null || liveComponent == null)
+                return false;
+
+            var snapshotSO = new SerializedObject(snapshotComponent);
+            var liveSO = new SerializedObject(liveComponent);
+
+            SerializedProperty prop = snapshotSO.GetIterator();
+            bool enterChildren = true;
+
+            while (prop.NextVisible(enterChildren))
+            {
+                enterChildren = false;
+
+                if (prop.name == "m_Script")
+                    continue;
+
+                var liveProp = liveSO.FindProperty(prop.propertyPath);
+                if (liveProp == null || liveProp.propertyType != prop.propertyType)
+                    continue;
+
+                if (PropertiesDiffer(prop, liveProp))
+                    return true;
+            }
+
+            return false;
+        }
+
+        bool PropertiesDiffer(SerializedProperty a, SerializedProperty b)
+        {
+            switch (a.propertyType)
+            {
+                case SerializedPropertyType.Integer: return a.intValue != b.intValue;
+                case SerializedPropertyType.Boolean: return a.boolValue != b.boolValue;
+                case SerializedPropertyType.Float: return !Mathf.Approximately(a.floatValue, b.floatValue);
+                case SerializedPropertyType.String: return a.stringValue != b.stringValue;
+                case SerializedPropertyType.Color: return a.colorValue != b.colorValue;
+                case SerializedPropertyType.Vector2: return a.vector2Value != b.vector2Value;
+                case SerializedPropertyType.Vector3: return a.vector3Value != b.vector3Value;
+                case SerializedPropertyType.Vector4: return a.vector4Value != b.vector4Value;
+                case SerializedPropertyType.Quaternion: return a.quaternionValue != b.quaternionValue;
+                case SerializedPropertyType.Enum: return a.enumValueIndex != b.enumValueIndex;
+                default: return false;
+            }
         }
 
         private static string GetGameObjectPathForPopup(Transform transform)
@@ -826,6 +898,41 @@ private void HandleMouseWheel(Rect rect, bool needsScrolling)
             if (EditorWindow.HasOpenInstances<OverridesBrowserWindow>())
             {
                 OverridesBrowserWindow.Open();
+            }
+        }
+
+        private void HandleDragAndDrop(Rect rect)
+        {
+            // Header-Bereich für Drag-Detection
+            Rect dragHeaderRect = new Rect(rect.x, rect.y, rect.width, DragHeaderHeight);
+
+            if (Event.current.type == EventType.MouseDown && dragHeaderRect.Contains(Event.current.mousePosition))
+            {
+                isDragging = true;
+                dragLastMousePos = GUIUtility.GUIToScreenPoint(Event.current.mousePosition);
+                Event.current.Use();
+            }
+            else if (Event.current.type == EventType.MouseDrag && isDragging)
+            {
+                Vector2 currentScreenPos = GUIUtility.GUIToScreenPoint(Event.current.mousePosition);
+                Vector2 delta = currentScreenPos - dragLastMousePos;
+                
+                Rect newRect = editorWindow.position;
+                newRect.position += delta;
+                editorWindow.position = newRect;
+                
+                dragLastMousePos = currentScreenPos;
+                Event.current.Use();
+            }
+            else if (Event.current.type == EventType.MouseUp)
+            {
+                isDragging = false;
+            }
+
+            // Visual Feedback: Header-Bereich zeichnen
+            if (Event.current.type == EventType.Repaint)
+            {
+                GUI.Box(dragHeaderRect, GUIContent.none, EditorStyles.toolbar);
             }
         }
 
