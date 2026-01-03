@@ -56,7 +56,7 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker
         public static void ResetTransformBaseline(GameObject go)
         {
             if (go == null) return;
-            string key = SceneAndPathUtilities.GetGameObjectKey(go);
+            string key = GetGoKey(go);
             snapshots[key] = new TransformSnapshot(go);
         }
 
@@ -65,7 +65,7 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker
             if (comp == null) return;
 
             GameObject go = comp.gameObject;
-            string goKey = SceneAndPathUtilities.GetGameObjectKey(go);
+            string goKey = GetGoKey(go);
 
             if (!componentSnapshots.TryGetValue(goKey, out var dict))
             {
@@ -82,7 +82,7 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker
             if (go == null)
                 return null;
 
-            string key = SceneAndPathUtilities.GetGameObjectKey(go);
+            string key = GetGoKey(go);
             bool found = snapshots.TryGetValue(key, out var snap);
             return found ? snap : null;
         }
@@ -90,7 +90,7 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker
         public static void SetSnapshot(GameObject go, TransformSnapshot snapshot)
         {
             if (snapshot == null) return;
-            string key = SceneAndPathUtilities.GetGameObjectKey(go);
+            string key = GetGoKey(go);
             snapshots[key] = snapshot;
         }
 
@@ -98,10 +98,13 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker
         {
             if (go == null) return new List<Component>();
 
-            string key = SceneAndPathUtilities.GetGameObjectKey(go);
+            string key = GetGoKey(go);
 
             if (!componentSnapshots.ContainsKey(key))
+            {
+                Debug.LogWarning($"[RCS][Snapshot] No component baselines for GUID key '{key}' (name='{go.name}')");
                 return new List<Component>();
+            }
 
             var changed = new List<Component>();
             var compSnapshots = componentSnapshots[key];
@@ -114,6 +117,10 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker
                 if (transformChanges.Count > 0)
                     changed.Add(go.transform);
             }
+            else
+            {
+                Debug.LogWarning($"[RCS][Snapshot] Missing transform baseline for GUID key '{key}' (name='{go.name}')");
+            }
 
             foreach (var comp in go.GetComponents<Component>())
             {
@@ -122,7 +129,10 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker
                 string compKey = SceneAndPathUtilities.GetComponentKey(comp);
 
                 if (!compSnapshots.TryGetValue(compKey, out var snapshot))
+                {
+                    Debug.LogWarning($"[RCS][Snapshot] Missing component baseline for key '{compKey}' on '{go.name}'");
                     continue;
+                }
 
                 bool hasChanged = HasComponentChanged(comp, snapshot);
 
@@ -137,7 +147,7 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker
         {
             int count = 1;
 
-            string key = SceneAndPathUtilities.GetGameObjectKey(go);
+            string key = GetGoKey(go);
             snapshots[key] = new TransformSnapshot(go);
 
             var compDict = new Dictionary<string, ComponentSnapshot>();
@@ -166,7 +176,8 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker
         {
             var snapshot = new ComponentSnapshot
             {
-                componentType = comp.GetType().AssemblyQualifiedName
+                componentType = comp.GetType().AssemblyQualifiedName,
+                globalObjectId = GlobalObjectId.GetGlobalObjectIdSlow(comp.gameObject).ToString()
             };
 
             SerializedObject so = new SerializedObject(comp);
@@ -269,11 +280,20 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker
 
         public static ComponentSnapshot GetComponentSnapshot(GameObject go, string componentKey)
         {
-            string goKey = SceneAndPathUtilities.GetGameObjectKey(go);
+            string goKey = GetGoKey(go);
             if (!componentSnapshots.TryGetValue(goKey, out var componentSnapshot))
                 return null;
 
             return componentSnapshot.GetValueOrDefault(componentKey);
+        }
+
+        private static string GetGoKey(GameObject go)
+        {
+            if (go == null) return string.Empty;
+            string guid = GlobalObjectId.GetGlobalObjectIdSlow(go).ToString();
+            if (!string.IsNullOrEmpty(guid))
+                return guid;
+            return SceneAndPathUtilities.GetGameObjectKey(go);
         }
     }
 }

@@ -11,6 +11,7 @@ namespace RuntimeChangesSaver.Editor
     {
         private class GameObjectEntry
         {
+            public string Guid;
             public GameObject GameObject;
             public List<Component> ChangedComponents = new List<Component>();
         }
@@ -64,7 +65,7 @@ namespace RuntimeChangesSaver.Editor
                         if (!scene.IsValid() || !scene.isLoaded)
                             continue;
 
-                        var go = FindInSceneByPath(scene, change.objectPath);
+                        var go = SceneAndPathUtilities.FindGameObjectByGuidOrPath(scene, change.globalObjectId, change.objectPath);
                         if (go == null)
                             continue;
 
@@ -75,10 +76,12 @@ namespace RuntimeChangesSaver.Editor
                             _sceneFoldouts[scene] = true;
                         }
 
-                        var entry = list.Find(e => e.GameObject == go);
+                        var entry = list.Find(e =>
+                            (!string.IsNullOrEmpty(change.globalObjectId) && e.Guid == change.globalObjectId) ||
+                            (string.IsNullOrEmpty(change.globalObjectId) && e.GameObject == go));
                         if (entry == null)
                         {
-                            entry = new GameObjectEntry { GameObject = go };
+                            entry = new GameObjectEntry { Guid = change.globalObjectId, GameObject = go };
                             list.Add(entry);
                         }
 
@@ -98,7 +101,7 @@ namespace RuntimeChangesSaver.Editor
                         if (!scene.IsValid() || !scene.isLoaded)
                             continue;
 
-                        var go = FindInSceneByPath(scene, change.objectPath);
+                        var go = SceneAndPathUtilities.FindGameObjectByGuidOrPath(scene, change.globalObjectId, change.objectPath);
                         if (go == null)
                             continue;
 
@@ -121,10 +124,12 @@ namespace RuntimeChangesSaver.Editor
                             _sceneFoldouts[scene] = true;
                         }
 
-                        var entry = list.Find(e => e.GameObject == go);
+                        var entry = list.Find(e =>
+                            (!string.IsNullOrEmpty(change.globalObjectId) && e.Guid == change.globalObjectId) ||
+                            (string.IsNullOrEmpty(change.globalObjectId) && e.GameObject == go));
                         if (entry == null)
                         {
-                            entry = new GameObjectEntry { GameObject = go };
+                            entry = new GameObjectEntry { Guid = change.globalObjectId, GameObject = go };
                             list.Add(entry);
                         }
 
@@ -197,7 +202,7 @@ namespace RuntimeChangesSaver.Editor
             if (!scene.IsValid() || !scene.isLoaded)
                 return;
 
-            var go = FindInSceneByPath(scene, change.objectPath);
+            var go = SceneAndPathUtilities.FindGameObjectByGuidOrPath(scene, change.globalObjectId, change.objectPath);
             if (go == null)
                 return;
 
@@ -209,7 +214,7 @@ namespace RuntimeChangesSaver.Editor
 
             if (!goDict.TryGetValue(go, out var entry))
             {
-                entry = new GameObjectEntry { GameObject = go };
+                entry = new GameObjectEntry { Guid = change.globalObjectId, GameObject = go };
                 goDict[go] = entry;
             }
 
@@ -225,7 +230,7 @@ namespace RuntimeChangesSaver.Editor
             if (!scene.IsValid() || !scene.isLoaded)
                 return;
 
-            var go = FindInSceneByPath(scene, change.objectPath);
+            var go = SceneAndPathUtilities.FindGameObjectByGuidOrPath(scene, change.globalObjectId, change.objectPath);
             if (go == null)
                 return;
 
@@ -249,7 +254,7 @@ namespace RuntimeChangesSaver.Editor
 
             if (!goDict.TryGetValue(go, out var entry))
             {
-                entry = new GameObjectEntry { GameObject = go };
+                entry = new GameObjectEntry { Guid = change.globalObjectId, GameObject = go };
                 goDict[go] = entry;
             }
 

@@ -343,6 +343,7 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker
 
             string scenePath = go.scene.path;
             string objectPath = SceneAndPathUtilities.GetGameObjectPath(go.transform);
+            string globalObjectId = current.globalObjectId; // Capture GUID from snapshot
 
             List<string> modifiedProps = original != null 
                 ? SnapshotManager.GetChangedProperties(original, current)
@@ -358,6 +359,7 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker
                     {
                         scenePath = scenePath,
                         objectPath = objectPath,
+                        globalObjectId = original.globalObjectId, // Store GUID from original snapshot
                         isRectTransform = original.isRectTransform,
                         position = original.position,
                         rotation = original.rotation,
@@ -382,6 +384,7 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker
             {
                 scenePath = scenePath,
                 objectPath = objectPath,
+                globalObjectId = globalObjectId, // Store GUID in change record
                 isRectTransform = current.isRectTransform,
                 position = current.position,
                 rotation = current.rotation,
@@ -415,6 +418,7 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker
 
             string scenePath = comp.gameObject.scene.path;
             string objectPath = SceneAndPathUtilities.GetGameObjectPath(comp.transform);
+            string globalObjectId = originalSnapshot?.globalObjectId ?? GlobalObjectId.GetGlobalObjectIdSlow(comp.gameObject).ToString();
             var allOfType = comp.gameObject.GetComponents(comp.GetType());
             int index = Array.IndexOf(allOfType, comp);
 
@@ -473,6 +477,7 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker
                     {
                         scenePath = scenePath,
                         objectPath = objectPath,
+                        globalObjectId = originalSnapshot.globalObjectId,
                         componentType = comp.GetType().AssemblyQualifiedName,
                         componentIndex = index,
                         propertyPaths = new List<string>(propertyPaths),
@@ -490,6 +495,7 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker
             {
                 scenePath = scenePath,
                 objectPath = objectPath,
+                globalObjectId = globalObjectId,
                 componentType = comp.GetType().AssemblyQualifiedName,
                 componentIndex = index,
                 propertyPaths = propertyPaths,

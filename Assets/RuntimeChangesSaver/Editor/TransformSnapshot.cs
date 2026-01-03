@@ -1,4 +1,5 @@
 ﻿using System;
+using UnityEditor;
 using UnityEngine;
 
 namespace RuntimeChangesSaver.Editor
@@ -9,6 +10,7 @@ namespace RuntimeChangesSaver.Editor
         public Vector3 position;
         public Quaternion rotation;
         public Vector3 scale;
+        public string globalObjectId;
 
         public bool isRectTransform;
         public Vector2 anchoredPosition;
@@ -26,6 +28,9 @@ namespace RuntimeChangesSaver.Editor
             position = t.localPosition;
             rotation = t.localRotation;
             scale = t.localScale;
+
+            // Capture GlobalObjectId for robust GUID-based lookup
+            globalObjectId = GlobalObjectId.GetGlobalObjectIdSlow(go).ToString();
 
             RectTransform rt = t as RectTransform;
             isRectTransform = rt;

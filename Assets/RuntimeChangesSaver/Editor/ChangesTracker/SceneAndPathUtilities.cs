@@ -1,6 +1,8 @@
+using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine.SceneManagement;
 using UnityEngine;
+using Debug = UnityEngine.Debug;
 
 namespace RuntimeChangesSaver.Editor.ChangesTracker
 {
@@ -21,6 +23,65 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker
                 scene = SceneManager.GetSceneByName(scenePath);
             }
             return scene;
+        }
+
+        /// <summary>
+        /// Hybrid lookup: attempts GUID-based lookup first, falls back to path-based lookup.
+        /// Logs warning if fallback is used.
+        /// </summary>
+        public static GameObject FindGameObjectByGuidOrPath(Scene scene, string globalObjectIdStr, string objectPath)
+        {
+            // Attempt GUID lookup first (primary method)
+            if (!string.IsNullOrEmpty(globalObjectIdStr))
+            {
+                GameObject guidResult = FindGameObjectByGuid(globalObjectIdStr);
+                if (guidResult != null)
+                {
+                    Debug.Log($"[RCS][Lookup] GUID hit for '{globalObjectIdStr}' -> {guidResult.scene.path}/{GetGameObjectPath(guidResult.transform)}");
+                    return guidResult;
+                }
+                Debug.LogWarning($"[RCS][Lookup] GUID miss for '{globalObjectIdStr}', falling back to path '{objectPath}'");
+            }
+
+            // Fallback to path-based lookup
+            GameObject pathResult = FindInSceneByPath(scene, objectPath);
+            if (pathResult != null && !string.IsNullOrEmpty(globalObjectIdStr))
+            {
+                Debug.LogWarning($"[RCS][Lookup] Fallback succeeded via path '{objectPath}'");
+            }
+
+            return pathResult;
+        }
+
+        /// <summary>
+        /// Attempts to find a GameObject by its GlobalObjectId string.
+        /// Returns null if GUID is invalid or object not found.
+        /// </summary>
+        public static GameObject FindGameObjectByGuid(string globalObjectIdStr)
+        {
+            if (string.IsNullOrEmpty(globalObjectIdStr))
+                return null;
+
+            if (!GlobalObjectId.TryParse(globalObjectIdStr, out GlobalObjectId globalObjectId))
+            {
+                Debug.LogWarning($"[RCS][Lookup] Failed to parse GlobalObjectId '{globalObjectIdStr}'");
+                return null;
+            }
+
+            Object obj = GlobalObjectId.GlobalObjectIdentifierToObjectSlow(globalObjectId);
+            if (obj is GameObject go)
+            {
+                Debug.Log($"[RCS][Lookup] GUID resolved to GameObject '{go.name}' in scene '{go.scene.path}'");
+                return go;
+            }
+
+            if (obj is Component comp)
+            {
+                Debug.Log($"[RCS][Lookup] GUID resolved to Component '{comp.GetType().Name}' on GameObject '{comp.gameObject.name}'");
+                return comp.gameObject;
+            }
+
+            return null;
         }
 
         public static GameObject FindInSceneByPath(Scene scene, string path)

@@ -1,5 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
+using UnityEditor;
+using UnityEngine;
 
 namespace RuntimeChangesSaver.Editor
 {
@@ -7,6 +9,16 @@ namespace RuntimeChangesSaver.Editor
     public class ComponentSnapshot
     {
         public string componentType; 
+        public string globalObjectId;
         public Dictionary<string, object> properties = new Dictionary<string, object>();
+
+        public ComponentSnapshot() { }
+
+        public ComponentSnapshot(Component comp)
+        {
+            componentType = comp.GetType().AssemblyQualifiedName;
+            // Capture GlobalObjectId of the owning GameObject for robust GUID-based lookup
+            globalObjectId = GlobalObjectId.GetGlobalObjectIdSlow(comp.gameObject).ToString();
+        }
     }
 }

@@ -13,6 +13,7 @@ namespace RuntimeChangesSaver.Editor
         { 
             public string scenePath;
             public string objectPath;
+            public string globalObjectId;
             public bool isRectTransform;
 
             public Vector3 position;

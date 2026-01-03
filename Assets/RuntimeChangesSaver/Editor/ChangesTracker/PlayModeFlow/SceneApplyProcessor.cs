@@ -137,16 +137,26 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker.PlayModeFlow
                     if (!string.Equals(normalizedChangePath, targetScenePath, StringComparison.OrdinalIgnoreCase))
                         continue;
 
+                    Debug.Log($"[RCS][Apply][Transform] Begin scene='{normalizedChangePath}' guid='{change.globalObjectId}' path='{change.objectPath}' props={string.Join(",", change.modifiedProperties ?? new List<string>())}");
+
                     var scene = SceneManager.GetSceneByPath(normalizedChangePath);
                     if (!scene.IsValid())
                         scene = SceneManager.GetSceneByName(change.scenePath);
 
                     if (!scene.IsValid())
+                    {
+                        Debug.LogWarning($"[RCS][Apply][Transform] Scene not valid for path '{change.scenePath}'");
                         continue;
+                    }
 
-                    GameObject go = SceneAndPathUtilities.FindInSceneByPath(scene, change.objectPath);
+                    GameObject go = SceneAndPathUtilities.FindGameObjectByGuidOrPath(scene, change.globalObjectId, change.objectPath);
                     if (go == null)
+                    {
+                        Debug.LogWarning($"[RCS][Apply][Transform] Target not found (guid='{change.globalObjectId}', path='{change.objectPath}')");
                         continue;
+                    }
+
+                    Debug.Log($"[RCS][Apply][Transform] Target='{go.name}' scene='{go.scene.path}' path='{SceneAndPathUtilities.GetGameObjectPath(go.transform)}'");
 
                     Transform t = go.transform;
                     RectTransform rt = t as RectTransform;
@@ -182,6 +192,8 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker.PlayModeFlow
                     EditorUtility.SetDirty(go);
                     if (scene.IsValid())
                         EditorSceneManager.MarkSceneDirty(scene);
+
+                    Debug.Log($"[RCS][Apply][Transform] Applied to '{go.name}'");
                 }
             }
 
@@ -194,28 +206,47 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker.PlayModeFlow
                     if (!string.Equals(normalizedChangePath, targetScenePath, StringComparison.OrdinalIgnoreCase))
                         continue;
 
+                    Debug.Log($"[RCS][Apply][Component] Begin scene='{normalizedChangePath}' guid='{change.globalObjectId}' path='{change.objectPath}' type='{change.componentType}' idx={change.componentIndex}");
+
                     var scene = SceneManager.GetSceneByPath(normalizedChangePath);
                     if (!scene.IsValid())
                         scene = SceneManager.GetSceneByName(change.scenePath);
 
                     if (!scene.IsValid())
+                    {
+                        Debug.LogWarning($"[RCS][Apply][Component] Scene not valid for path '{change.scenePath}'");
                         continue;
+                    }
 
-                    GameObject go = SceneAndPathUtilities.FindInSceneByPath(scene, change.objectPath);
+                    GameObject go = SceneAndPathUtilities.FindGameObjectByGuidOrPath(scene, change.globalObjectId, change.objectPath);
                     if (go == null)
+                    {
+                        Debug.LogWarning($"[RCS][Apply][Component] Target not found (guid='{change.globalObjectId}', path='{change.objectPath}')");
                         continue;
+                    }
+
+                    Debug.Log($"[RCS][Apply][Component] Target='{go.name}' scene='{go.scene.path}' path='{SceneAndPathUtilities.GetGameObjectPath(go.transform)}'");
 
                     var type = Type.GetType(change.componentType);
                     if (type == null)
+                    {
+                        Debug.LogWarning($"[RCS][Apply][Component] Type not found '{change.componentType}'");
                         continue;
+                    }
 
                     var allComps = go.GetComponents(type);
                     if (change.componentIndex < 0 || change.componentIndex >= allComps.Length)
+                    {
+                        Debug.LogWarning($"[RCS][Apply][Component] Component index out of range idx={change.componentIndex} len={allComps.Length}");
                         continue;
+                    }
 
                     var comp = allComps[change.componentIndex];
                     if (comp == null)
+                    {
+                        Debug.LogWarning($"[RCS][Apply][Component] Component null at idx={change.componentIndex}");
                         continue;
+                    }
 
                     SerializedObject so = new SerializedObject(comp);
                     Undo.RecordObject(comp, "Apply Play Mode Component Changes");
@@ -237,6 +268,8 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker.PlayModeFlow
                     EditorUtility.SetDirty(comp);
                     if (scene.IsValid())
                         EditorSceneManager.MarkSceneDirty(scene);
+
+                    Debug.Log($"[RCS][Apply][Component] Applied to '{go.name}' component='{comp.GetType().Name}' idx={change.componentIndex}");
                 }
             }
 

@@ -13,6 +13,7 @@ namespace RuntimeChangesSaver.Editor
         {
             public string scenePath;
             public string objectPath;
+            public string globalObjectId;
             public string componentType;
             public int componentIndex;
 

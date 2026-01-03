@@ -299,6 +299,7 @@ namespace RuntimeChangesSaver.Editor
                 scenePath = targetGO.scene.name;
 
             string objectPath = OverrideComparePopupUtilities.GetGameObjectPath(targetGO.transform);
+            string targetGuid = GlobalObjectId.GetGlobalObjectIdSlow(targetGO).ToString();
 
             bool transformListed = changedComponents.Contains(targetGO.transform);
 
@@ -306,7 +307,9 @@ namespace RuntimeChangesSaver.Editor
             var tStore = TransformChangesStore.LoadExisting();
             if (transformListed && tStore != null)
             {
-                int index = tStore.changes.FindIndex(c => c.scenePath == scenePath && c.objectPath == objectPath);
+                int index = tStore.changes.FindIndex(c =>
+                    (!string.IsNullOrEmpty(c.globalObjectId) && c.globalObjectId == targetGuid) ||
+                    (string.IsNullOrEmpty(c.globalObjectId) && c.scenePath == scenePath && c.objectPath == objectPath));
                 if (index >= 0)
                 {
                     var storedChange = tStore.changes[index];
@@ -328,6 +331,10 @@ namespace RuntimeChangesSaver.Editor
                         rt.offsetMin = storedChange.offsetMin;
                         rt.offsetMax = storedChange.offsetMax;
                     }
+
+                    // remove store entry after revert
+                    tStore.changes.RemoveAt(index);
+                    EditorUtility.SetDirty(tStore);
                 }
             }
 
@@ -345,10 +352,12 @@ namespace RuntimeChangesSaver.Editor
                     int compIndex = System.Array.IndexOf(allOfType, comp);
 
                     int index = cStore.changes.FindIndex(c =>
-                        c.scenePath == scenePath &&
-                        c.objectPath == objectPath &&
                         c.componentType == componentType &&
-                        c.componentIndex == compIndex);
+                        c.componentIndex == compIndex &&
+                        (
+                            (!string.IsNullOrEmpty(c.globalObjectId) && c.globalObjectId == targetGuid) ||
+                            (string.IsNullOrEmpty(c.globalObjectId) && c.scenePath == scenePath && c.objectPath == objectPath)
+                        ));
 
                     if (index >= 0)
                     {
@@ -366,9 +375,15 @@ namespace RuntimeChangesSaver.Editor
                         }
 
                         targetSO.ApplyModifiedProperties();
+
+                        // remove store entry after revert
+                        cStore.changes.RemoveAt(index);
+                        EditorUtility.SetDirty(cStore);
                     }
                 }
             }
+
+            AssetDatabase.SaveAssets();
         }
 
         bool HasAnySavedEntries()
