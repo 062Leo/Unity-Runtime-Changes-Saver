@@ -29,21 +29,6 @@ namespace RuntimeChangesSaver.Editor
             public Vector2 offsetMax;
 
             public List<string> modifiedProperties = new List<string>();
-
-            public bool hasOriginalValues;
-
-            public Vector3 originalPosition;
-            public Quaternion originalRotation;
-            public Vector3 originalScale;
-
-            public Vector2 originalAnchoredPosition;
-            public Vector3 originalAnchoredPosition3D;
-            public Vector2 originalAnchorMin;
-            public Vector2 originalAnchorMax;
-            public Vector2 originalPivot;
-            public Vector2 originalSizeDelta;
-            public Vector2 originalOffsetMin;
-            public Vector2 originalOffsetMax;
         }
 
         public List<TransformChange> changes = new List<TransformChange>();

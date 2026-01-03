@@ -2,6 +2,8 @@
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using RuntimeChangesSaver.Editor.ChangesTracker;
+using RuntimeChangesSaver.Editor.OverrideComparePopup;
 
 namespace RuntimeChangesSaver.Editor
 {
@@ -11,11 +13,11 @@ namespace RuntimeChangesSaver.Editor
         {
             public GameObject GameObject;
             public List<Component> ChangedComponents = new List<Component>();
-            public bool Expanded = true;
         }
 
         private readonly Dictionary<Scene, List<GameObjectEntry>> _sceneEntries = new Dictionary<Scene, List<GameObjectEntry>>();
         private readonly Dictionary<Scene, bool> _sceneFoldouts = new Dictionary<Scene, bool>();
+        private readonly Dictionary<int, bool> _gameObjectFoldouts = new Dictionary<int, bool>();
         private Vector2 _scroll;
 
         [MenuItem("Tools/Play Mode Overrides Browser")]
@@ -50,29 +52,8 @@ namespace RuntimeChangesSaver.Editor
 
             if (Application.isPlaying)
             {
-                // play mode changes from in-memory snapshots
-                for (int i = 0; i < sceneCount; i++)
-                {
-                    Scene scene = SceneManager.GetSceneAt(i);
-                    if (!scene.isLoaded)
-                        continue;
-
-                    var list = new List<GameObjectEntry>();
-
-                    GameObject[] roots = scene.GetRootGameObjects();
-                    foreach (GameObject root in roots)
-                    {
-                        CollectChangedGameObjectsRecursive(root, list);
-                    }
-
-                    if (list.Count > 0)
-                    {
-                        _sceneEntries[scene] = list;
-                        _sceneFoldouts[scene] = true;
-                    }
-                }
-
-                // accepted overrides from ScriptableObject stores in play mode
+                // In Play Mode: Only show accepted overrides from ScriptableObject stores
+                // Do NOT show in-memory snapshots that haven't been applied yet
 
                 var transformStore = TransformChangesStore.LoadExisting();
                 if (transformStore != null)
@@ -97,7 +78,7 @@ namespace RuntimeChangesSaver.Editor
                         var entry = list.Find(e => e.GameObject == go);
                         if (entry == null)
                         {
-                            entry = new GameObjectEntry { GameObject = go, Expanded = false };
+                            entry = new GameObjectEntry { GameObject = go };
                             list.Add(entry);
                         }
 
@@ -143,7 +124,7 @@ namespace RuntimeChangesSaver.Editor
                         var entry = list.Find(e => e.GameObject == go);
                         if (entry == null)
                         {
-                            entry = new GameObjectEntry { GameObject = go, Expanded = false };
+                            entry = new GameObjectEntry { GameObject = go };
                             list.Add(entry);
                         }
 
@@ -193,14 +174,13 @@ namespace RuntimeChangesSaver.Editor
 
         private void CollectChangedGameObjectsRecursive(GameObject go, List<GameObjectEntry> list)
         {
-            var changed = ChangesTracker.GetChangedComponents(go);
+            var changed = ChangesTrackerCore.GetChangedComponents(go);
             if (changed is { Count: > 0 })
             {
                 var entry = new GameObjectEntry
                 {
                     GameObject = go,
-                    ChangedComponents = changed,
-                    Expanded = false
+                    ChangedComponents = changed
                 };
                 list.Add(entry);
             }
@@ -229,7 +209,7 @@ namespace RuntimeChangesSaver.Editor
 
             if (!goDict.TryGetValue(go, out var entry))
             {
-                entry = new GameObjectEntry { GameObject = go, Expanded = false };
+                entry = new GameObjectEntry { GameObject = go };
                 goDict[go] = entry;
             }
 
@@ -269,7 +249,7 @@ namespace RuntimeChangesSaver.Editor
 
             if (!goDict.TryGetValue(go, out var entry))
             {
-                entry = new GameObjectEntry { GameObject = go, Expanded = false };
+                entry = new GameObjectEntry { GameObject = go };
                 goDict[go] = entry;
             }
 
@@ -387,12 +367,17 @@ namespace RuntimeChangesSaver.Editor
                     if (!entry.GameObject)
                         continue;
 
+                    int id = entry.GameObject.GetInstanceID();
+                    bool goExpanded = _gameObjectFoldouts.GetValueOrDefault(id, true);
+
                     EditorGUILayout.BeginHorizontal();
-                    entry.Expanded = EditorGUILayout.Foldout(entry.Expanded, entry.GameObject.name, true);
+                    goExpanded = EditorGUILayout.Foldout(goExpanded, entry.GameObject.name, true);
                     EditorGUILayout.ObjectField(entry.GameObject, typeof(GameObject), true);
                     EditorGUILayout.EndHorizontal();
 
-                    if (!entry.Expanded)
+                    _gameObjectFoldouts[id] = goExpanded;
+
+                    if (!goExpanded)
                         continue;
 
                     EditorGUI.indentLevel++;
@@ -404,14 +389,24 @@ namespace RuntimeChangesSaver.Editor
 
                         EditorGUILayout.BeginHorizontal();
                         GUILayout.Space(10);
-                        if (GUILayout.Button(comp.GetType().Name, EditorStyles.linkLabel))
+
+                        // reserve rect for the object field
+                        Rect objectRect = GUILayoutUtility.GetRect(GUIContent.none, GUIStyle.none, GUILayout.ExpandWidth(true));
+
+                        // draw the ObjectField only on repaint so it doesn't consume mouse events
+                        if (Event.current.type == EventType.Repaint)
                         {
-                            // popup open position below button row
-                            Rect buttonRect = GUILayoutUtility.GetLastRect();
-                            Rect popupRect = new Rect(buttonRect.x, buttonRect.yMax, buttonRect.width, 0f);
-                            PopupWindow.Show(popupRect, new OverrideComparePopup(comp));
+                            EditorGUI.ObjectField(objectRect, comp, typeof(Component), true);
                         }
-                        EditorGUILayout.ObjectField(comp, typeof(Component), true);
+                        if (GUI.Button(objectRect, GUIContent.none, GUIStyle.none))
+                        {
+                            // popup open position below object field row
+                            Rect popupRect = new Rect(objectRect.x, objectRect.yMax, objectRect.width, 0f);
+                            PopupWindow.Show(popupRect, new OverrideComparePopupContent(comp, openedFromBrowser: true));
+                        }
+
+                        // make the entire ObjectField clickable to open the compare popup
+
                         EditorGUILayout.EndHorizontal();
                     }
 
