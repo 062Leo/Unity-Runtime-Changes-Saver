@@ -35,7 +35,8 @@ namespace RuntimeChangesSaver.Editor
 
             // check for changed components
             var changedComponents = ChangesTrackerCore.GetChangedComponents(go);
-            bool hasChanges = changedComponents.Count > 0;
+            bool hasNameDelta = ChangesTrackerCore.HasNameDelta(go);
+            bool hasChanges = changedComponents.Count > 0 || hasNameDelta;
 
             EditorGUILayout.BeginHorizontal(EditorStyles.helpBox);
 

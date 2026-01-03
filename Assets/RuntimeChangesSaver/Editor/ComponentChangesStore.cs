@@ -20,6 +20,9 @@ namespace RuntimeChangesSaver.Editor
             public List<string> propertyPaths = new List<string>();
             public List<string> serializedValues = new List<string>();
             public List<string> valueTypes = new List<string>();
+
+            public bool includeMaterialChanges;
+            public List<string> materialGuids = new List<string>();
         }
 
         public List<ComponentChange> changes = new List<ComponentChange>();

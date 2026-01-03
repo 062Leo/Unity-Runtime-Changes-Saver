@@ -11,7 +11,7 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker.PlayModeFlow
 {
     public static class SceneApplyProcessor
     {
-        public static void ProcessNextSceneInQueue(List<string> remainingScenes, string startScenePath, TransformChangesStore tStore, ComponentChangesStore cStore)
+        public static void ProcessNextSceneInQueue(List<string> remainingScenes, string startScenePath, TransformChangesStore tStore, ComponentChangesStore cStore, GameObjectNameChangesStore nameStore)
         {
             Debug.Log($"[PlayOverrides][ProcessNextSceneInQueue] ENTER remainingScenes=[{string.Join(", ", remainingScenes)}], startScenePath='{startScenePath}'");
 
@@ -58,7 +58,7 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker.PlayModeFlow
                                 {
                                     Debug.Log("[PlayOverrides][ProcessNextSceneInQueue] Delay 4 after scene switch, continuing queue...");
                                     ProcessNextSceneInQueue(new List<string> { currentPath }.Concat(remainingScenes).ToList(), 
-                                        startScenePath, tStore, cStore);
+                                        startScenePath, tStore, cStore, nameStore);
                                 };
                             };
                         };
@@ -79,6 +79,7 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker.PlayModeFlow
             {
                 Debug.Log($"[PlayOverrides][ProcessNextSceneInQueue] User chose APPLY for '{currentPath}'. Calling ApplyChangesFromStoreToEditModeForScene...");
                 ApplyChangesFromStoreToEditModeForScene(currentPath, tStore, cStore);
+                ApplyNameChangesFromStoreToEditModeForScene(currentPath);
                 
                 EditorApplication.delayCall += () => 
                 {
@@ -98,7 +99,7 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker.PlayModeFlow
                             EditorApplication.delayCall += () => 
                             {
                                 Debug.Log("[PlayOverrides][ProcessNextSceneInQueue] Apply delay 4 (continue with remaining scenes)");
-                                ProcessNextSceneInQueue(remainingScenes, startScenePath, tStore, cStore);
+                                ProcessNextSceneInQueue(remainingScenes, startScenePath, tStore, cStore, nameStore);
                             };
                         };
                     };
@@ -107,8 +108,8 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker.PlayModeFlow
             else
             {
                 Debug.Log($"[PlayOverrides][ProcessNextSceneInQueue] User chose DISCARD for '{currentPath}'. Removing changes from store for this scene...");
-                ChangesStoreManager.RemoveChangesForSceneFromStore(currentPath, tStore, cStore);
-                EditorApplication.delayCall += () => ProcessNextSceneInQueue(remainingScenes, startScenePath, tStore, cStore);
+                ChangesStoreManager.RemoveChangesForSceneFromStore(currentPath, tStore, cStore, nameStore);
+                EditorApplication.delayCall += () => ProcessNextSceneInQueue(remainingScenes, startScenePath, tStore, cStore, nameStore);
             }
         }
 
@@ -265,6 +266,11 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker.PlayModeFlow
                     }
 
                     so.ApplyModifiedProperties();
+
+                    if (change.includeMaterialChanges && comp is Renderer renderer)
+                    {
+                        ApplyMaterials(renderer, change.materialGuids);
+                    }
                     EditorUtility.SetDirty(comp);
                     if (scene.IsValid())
                         EditorSceneManager.MarkSceneDirty(scene);
@@ -323,6 +329,91 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker.PlayModeFlow
             }
             Debug.Log("[PlayOverrides][CheckReturnToStartScene] No return to start scene needed or user chose NO. Flow finished.");
             PlayModeOverrideFlow.StopProcessing();
+        }
+
+        private static void ApplyMaterials(Renderer renderer, List<string> materialGuids)
+        {
+            if (renderer == null || materialGuids == null)
+                return;
+
+            int targetCount = materialGuids.Count;
+            if (targetCount == 0)
+                return;
+
+            var current = renderer.sharedMaterials;
+            var applied = new Material[targetCount];
+
+            for (int i = 0; i < targetCount; i++)
+            {
+                string guid = materialGuids[i];
+                if (string.IsNullOrEmpty(guid))
+                {
+                    applied[i] = null;
+                    continue;
+                }
+
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                var material = AssetDatabase.LoadAssetAtPath<Material>(path);
+
+                if (material == null)
+                {
+                    if (i < current.Length)
+                        applied[i] = current[i];
+                    Debug.LogWarning($"[RCS][Apply][Component] Material GUID '{guid}' could not be resolved for renderer '{renderer.name}'");
+                }
+                else
+                {
+                    applied[i] = material;
+                }
+            }
+
+            renderer.sharedMaterials = applied;
+        }
+
+        public static void ApplyNameChangesFromStoreToEditModeForScene(string targetScenePath)
+        {
+            targetScenePath = SceneAndPathUtilities.NormalizeScenePath(targetScenePath);
+
+            var nameStore = GameObjectNameChangesStore.LoadExisting();
+            if (nameStore == null || nameStore.changes.Count == 0)
+                return;
+
+            foreach (var change in nameStore.changes)
+            {
+                var normalizedChangePath = SceneAndPathUtilities.NormalizeScenePath(change.scenePath);
+
+                if (!string.Equals(normalizedChangePath, targetScenePath, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                Debug.Log($"[RCS][Apply][Name] Begin scene='{normalizedChangePath}' guid='{change.globalObjectId}' path='{change.objectPath}' newName='{change.newName}'");
+
+                var scene = SceneManager.GetSceneByPath(normalizedChangePath);
+                if (!scene.IsValid())
+                    scene = SceneManager.GetSceneByName(change.scenePath);
+
+                if (!scene.IsValid())
+                {
+                    Debug.LogWarning($"[RCS][Apply][Name] Scene not valid for path '{change.scenePath}'");
+                    continue;
+                }
+
+                GameObject go = SceneAndPathUtilities.FindGameObjectByGuidOrPath(scene, change.globalObjectId, change.objectPath);
+                if (go == null)
+                {
+                    Debug.LogWarning($"[RCS][Apply][Name] Target not found (guid='{change.globalObjectId}', path='{change.objectPath}')");
+                    continue;
+                }
+
+                Debug.Log($"[RCS][Apply][Name] Target='{go.name}' -> Renaming to '{change.newName}'");
+
+                Undo.RecordObject(go, "Apply Play Mode Name Changes");
+                go.name = change.newName;
+                EditorUtility.SetDirty(go);
+                if (scene.IsValid())
+                    EditorSceneManager.MarkSceneDirty(scene);
+
+                Debug.Log($"[RCS][Apply][Name] Applied to '{go.name}'");
+            }
         }
     }
 }

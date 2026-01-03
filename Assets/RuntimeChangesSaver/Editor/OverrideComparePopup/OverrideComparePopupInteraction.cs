@@ -87,6 +87,24 @@ namespace RuntimeChangesSaver.Editor.OverrideComparePopup
 
             targetSO.ApplyModifiedProperties();
 
+            if (liveComponent is Transform or RectTransform)
+            {
+                var nameSnapshot = SnapshotManager.GetNameSnapshot(liveComponent.gameObject);
+                if (nameSnapshot != null && !string.IsNullOrEmpty(nameSnapshot.objectName))
+                {
+                    liveComponent.gameObject.name = nameSnapshot.objectName;
+                }
+            }
+            else if (liveComponent is Renderer renderer)
+            {
+                string compKey = ChangesTrackerCore.GetComponentKey(liveComponent);
+                var snapshot = ChangesTrackerCore.GetComponentSnapshot(liveComponent.gameObject, compKey);
+                if (snapshot?.materialGuids is { Count: > 0 })
+                {
+                    ApplyMaterials(renderer, snapshot.materialGuids);
+                }
+            }
+
             if (Application.isPlaying && liveComponent != null)
             {
                 if (liveComponent is Transform or RectTransform)
@@ -188,6 +206,11 @@ namespace RuntimeChangesSaver.Editor.OverrideComparePopup
                         }
 
                         targetSO.ApplyModifiedProperties();
+
+                        if (storedChange.includeMaterialChanges && liveComponent is Renderer renderer)
+                        {
+                            ApplyMaterials(renderer, storedChange.materialGuids);
+                        }
 
                         if (Application.isPlaying)
                         {
@@ -442,6 +465,39 @@ namespace RuntimeChangesSaver.Editor.OverrideComparePopup
             {
                 OverridesBrowserWindow.Open();
             }
+        }
+
+        private static void ApplyMaterials(Renderer renderer, System.Collections.Generic.List<string> materialGuids)
+        {
+            if (renderer == null || materialGuids == null || materialGuids.Count == 0)
+                return;
+
+            var current = renderer.sharedMaterials;
+            var applied = new Material[materialGuids.Count];
+
+            for (int i = 0; i < materialGuids.Count; i++)
+            {
+                string guid = materialGuids[i];
+                if (string.IsNullOrEmpty(guid))
+                {
+                    applied[i] = null;
+                    continue;
+                }
+
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                var mat = AssetDatabase.LoadAssetAtPath<Material>(path);
+                if (mat == null && i < current.Length)
+                {
+                    applied[i] = current[i];
+                    Debug.LogWarning($"[RCS][Popup][Revert] Material GUID '{guid}' could not be resolved for renderer '{renderer.name}'");
+                }
+                else
+                {
+                    applied[i] = mat;
+                }
+            }
+
+            renderer.sharedMaterials = applied;
         }
     }
 }

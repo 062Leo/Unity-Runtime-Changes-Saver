@@ -9,7 +9,7 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker.PlayModeFlow
 {
     public static class ChangesStoreManager
     {
-        public static void RemoveChangesForSceneFromStore(string targetScenePath, TransformChangesStore tStore, ComponentChangesStore cStore)
+        public static void RemoveChangesForSceneFromStore(string targetScenePath, TransformChangesStore tStore, ComponentChangesStore cStore, GameObjectNameChangesStore nameStore)
         {
             targetScenePath = SceneAndPathUtilities.NormalizeScenePath(targetScenePath);
             
@@ -39,10 +39,24 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker.PlayModeFlow
                 }
             }
 
+            if (nameStore != null && nameStore.changes.Count > 0)
+            {
+                var nameChangesToRemove = nameStore.changes.FindAll(c =>
+                    string.Equals(SceneAndPathUtilities.NormalizeScenePath(c.scenePath), targetScenePath, StringComparison.OrdinalIgnoreCase));
+
+                foreach (var change in nameChangesToRemove)
+                {
+                    nameStore.changes.Remove(change);
+                    Debug.Log($"[PlayOverrides][RemoveChangesForSceneFromStore] Removed Name change for '{change.objectPath}'");
+                }
+            }
+
             if (tStore != null)
                 EditorUtility.SetDirty(tStore);
             if (cStore != null)
                 EditorUtility.SetDirty(cStore);
+            if (nameStore != null)
+                EditorUtility.SetDirty(nameStore);
             AssetDatabase.SaveAssets();
             
             Debug.Log($"[PlayOverrides][RemoveChangesForSceneFromStore] Changes for scene '{targetScenePath}' have been removed and saved");

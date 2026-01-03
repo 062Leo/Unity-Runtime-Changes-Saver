@@ -6,54 +6,49 @@ using UnityEngine;
 
 namespace RuntimeChangesSaver.Editor
 {
-    public class ComponentOriginalStore : ScriptableObject
+    public class GameObjectNameChangesStore : ScriptableObject
     {
         [Serializable]
-        public class ComponentOriginal
+        public class NameChange
         {
             public string scenePath;
             public string objectPath;
             public string globalObjectId;
-            public string componentType;
-            public int componentIndex;
-
-            public List<string> propertyPaths = new List<string>();
-            public List<string> serializedValues = new List<string>();
-            public List<string> valueTypes = new List<string>();
-            public List<string> materialGuids = new List<string>();
+            public string newName;
         }
 
-        public List<ComponentOriginal> entries = new List<ComponentOriginal>();
+        public List<NameChange> changes = new List<NameChange>();
 
-        public static ComponentOriginalStore LoadExisting()
+        public static GameObjectNameChangesStore LoadExisting()
         {
-            string[] guids = AssetDatabase.FindAssets("t:ComponentOriginalStore");
+            string[] guids = AssetDatabase.FindAssets("t:GameObjectNameChangesStore");
             if (guids is { Length: > 0 })
             {
                 string path = AssetDatabase.GUIDToAssetPath(guids[0]);
-                return AssetDatabase.LoadAssetAtPath<ComponentOriginalStore>(path);
+                var store = AssetDatabase.LoadAssetAtPath<GameObjectNameChangesStore>(path);
+                return store;
             }
 
             return null;
         }
 
-        public static ComponentOriginalStore LoadOrCreate()
+        public static GameObjectNameChangesStore LoadOrCreate()
         {
             var store = LoadExisting();
             if (store == null)
             {
                 string assetPath = GetDefaultAssetPath();
-                store = CreateInstance<ComponentOriginalStore>();
+                store = CreateInstance<GameObjectNameChangesStore>();
                 AssetDatabase.CreateAsset(store, assetPath);
                 AssetDatabase.SaveAssets();
             }
-
             return store;
         }
 
         private static string GetRuntimeChangesSaverRootFolder()
         {
-            string[] scriptGuids = AssetDatabase.FindAssets("ComponentOriginalStore t:Script");
+            string[] scriptGuids = AssetDatabase.FindAssets("GameObjectNameChangesStore t:Script");
+
             if (scriptGuids is { Length: > 0 })
             {
                 string scriptPath = AssetDatabase.GUIDToAssetPath(scriptGuids[0]);
@@ -69,37 +64,35 @@ namespace RuntimeChangesSaver.Editor
                             return dir;
                         }
 
-                        string parent = Path.GetDirectoryName(dir);
-                        if (string.IsNullOrEmpty(parent))
-                            break;
-
-                        dir = parent.Replace("\\", "/");
+                        dir = Path.GetDirectoryName(dir)?.Replace("\\", "/");
                     }
-
-                    return Path.GetDirectoryName(scriptPath)?.Replace("\\", "/");
                 }
             }
 
-            return "Assets";
+            return "Assets/RuntimeChangesSaver";
         }
 
         private static string GetDefaultAssetPath()
         {
-            string runtimeFolder = GetRuntimeChangesSaverRootFolder();
-            string soFolder = runtimeFolder + "/Scriptable_Objects";
+            string rootFolder = GetRuntimeChangesSaverRootFolder();
+            string soDir = rootFolder + "/Scriptable_Objects";
 
-            if (!AssetDatabase.IsValidFolder(soFolder))
+            if (!AssetDatabase.IsValidFolder(soDir))
             {
-                AssetDatabase.CreateFolder(runtimeFolder, "Scriptable_Objects");
+                string parentPath = Path.GetDirectoryName(soDir)?.Replace("\\", "/");
+                string folderName = Path.GetFileName(soDir);
+                if (!string.IsNullOrEmpty(parentPath))
+                {
+                    AssetDatabase.CreateFolder(parentPath, folderName);
+                }
             }
 
-            string assetPath = Path.Combine(soFolder, "ComponentOriginalStore.asset");
-            return assetPath.Replace("\\", "/");
+            return soDir + "/GameObjectNameChangesStore.asset";
         }
 
         public void Clear()
         {
-            entries.Clear();
+            changes.Clear();
             EditorUtility.SetDirty(this);
         }
     }

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -10,11 +11,13 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker
     {
         private static readonly Dictionary<string, TransformSnapshot> snapshots = new();
         private static readonly Dictionary<string, Dictionary<string, ComponentSnapshot>> componentSnapshots = new();
+        private static readonly Dictionary<string, GameObjectNameSnapshot> nameSnapshots = new();
 
         public static void CaptureSnapshotsInPlayMode()
         {
             snapshots.Clear();
             componentSnapshots.Clear();
+            nameSnapshots.Clear();
 
             int sceneCount = SceneManager.sceneCount;
             for (int i = 0; i < sceneCount; i++)
@@ -34,6 +37,7 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker
         {
             snapshots.Clear();
             componentSnapshots.Clear();
+            nameSnapshots.Clear();
 
             int sceneCount = SceneManager.sceneCount;
             if (sceneCount == 0)
@@ -58,6 +62,13 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker
             if (go == null) return;
             string key = GetGoKey(go);
             snapshots[key] = new TransformSnapshot(go);
+        }
+
+        public static void ResetNameBaseline(GameObject go)
+        {
+            if (go == null) return;
+            string key = GetGoKey(go);
+            nameSnapshots[key] = new GameObjectNameSnapshot(go);
         }
 
         public static void ResetComponentBaseline(Component comp)
@@ -92,6 +103,21 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker
             if (snapshot == null) return;
             string key = GetGoKey(go);
             snapshots[key] = snapshot;
+        }
+
+        public static GameObjectNameSnapshot GetNameSnapshot(GameObject go)
+        {
+            if (go == null) return null;
+            string key = GetGoKey(go);
+            bool found = nameSnapshots.TryGetValue(key, out var snap);
+            return found ? snap : null;
+        }
+
+        public static void SetNameSnapshot(GameObject go, GameObjectNameSnapshot snapshot)
+        {
+            if (snapshot == null) return;
+            string key = GetGoKey(go);
+            nameSnapshots[key] = snapshot;
         }
 
         public static List<Component> GetChangedComponents(GameObject go)
@@ -149,6 +175,7 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker
 
             string key = GetGoKey(go);
             snapshots[key] = new TransformSnapshot(go);
+            nameSnapshots[key] = new GameObjectNameSnapshot(go);
 
             var compDict = new Dictionary<string, ComponentSnapshot>();
             Component[] components = go.GetComponents<Component>();
@@ -179,6 +206,11 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker
                 componentType = comp.GetType().AssemblyQualifiedName,
                 globalObjectId = GlobalObjectId.GetGlobalObjectIdSlow(comp.gameObject).ToString()
             };
+
+            if (comp is Renderer renderer)
+            {
+                snapshot.materialGuids = CaptureMaterialGuids(renderer);
+            }
 
             SerializedObject so = new SerializedObject(comp);
             SerializedProperty prop = so.GetIterator();
@@ -252,6 +284,24 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker
                 }
             }
 
+            if (comp is Renderer renderer)
+            {
+                if (ChangesTrackerCore.ShouldPersistMaterialChanges())
+                {
+                    var currentGuids = CaptureMaterialGuids(renderer);
+                    var originalGuids = snapshot.materialGuids ?? new List<string>();
+
+                    if (currentGuids.Count != originalGuids.Count)
+                        return true;
+
+                    for (int i = 0; i < currentGuids.Count; i++)
+                    {
+                        if (!string.Equals(currentGuids[i], originalGuids[i], StringComparison.Ordinal))
+                            return true;
+                    }
+                }
+            }
+
             return false;
         }
 
@@ -294,6 +344,29 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker
             if (!string.IsNullOrEmpty(guid))
                 return guid;
             return SceneAndPathUtilities.GetGameObjectKey(go);
+        }
+
+        private static List<string> CaptureMaterialGuids(Renderer renderer)
+        {
+            var result = new List<string>();
+            if (renderer == null)
+                return result;
+
+            var materials = renderer.sharedMaterials;
+            foreach (var mat in materials)
+            {
+                if (mat == null)
+                {
+                    result.Add(string.Empty);
+                    continue;
+                }
+
+                string path = AssetDatabase.GetAssetPath(mat);
+                string guid = string.IsNullOrEmpty(path) ? string.Empty : AssetDatabase.AssetPathToGUID(path);
+                result.Add(guid);
+            }
+
+            return result;
         }
     }
 }

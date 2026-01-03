@@ -1,5 +1,6 @@
 ﻿using UnityEditor;
 using UnityEngine;
+using RuntimeChangesSaver.Editor.ChangesTracker;
 
 namespace RuntimeChangesSaver.Editor.OverrideComparePopup
 {
@@ -26,11 +27,12 @@ namespace RuntimeChangesSaver.Editor.OverrideComparePopup
         // Layout constants
         private const float MinWidth = 350f;
         private const float HeaderHeight = 24f;
-        private const float FooterHeight = 40f;
+        private const float BaseFooterHeight = 40f;
         private const float MaxWindowHeight = 400f;
         private const float MinWindowHeight = 250f;
 
         private float targetWindowHeight = -1f;
+        private float footerHeight = BaseFooterHeight;
 
         public OverrideComparePopupContent(Component component, bool openedFromBrowser = false, System.Action onRefreshRequest = null)
         {
@@ -50,6 +52,10 @@ namespace RuntimeChangesSaver.Editor.OverrideComparePopup
             );
 
             CreateEditors();
+
+            // Adjust footer height when toggles are eligible
+            bool showMaterialToggle = ShouldShowMaterialToggle();
+            if (showMaterialToggle) footerHeight += 18f;
         }
 
         private void CreateEditors()
@@ -98,7 +104,7 @@ namespace RuntimeChangesSaver.Editor.OverrideComparePopup
             // Layout setup
             float scrollbarWidth = needsScrolling ? 15f : 0f;
             float columnWidth = (rect.width - scrollbarWidth - 6) * 0.5f;
-            float contentHeight = rect.height - FooterHeight - HeaderHeight;
+            float contentHeight = rect.height - footerHeight - HeaderHeight;
 
             OverrideComparePopupUI.DrawColumnHeader(new Rect(rect.x, rect.y, columnWidth, HeaderHeight), leftEditor.target, "Original");
             OverrideComparePopupUI.DrawColumnHeader(new Rect(rect.x + columnWidth + 6, rect.y, columnWidth, HeaderHeight), rightEditor.target, "Play Mode");
@@ -124,7 +130,7 @@ namespace RuntimeChangesSaver.Editor.OverrideComparePopup
             GUILayout.EndHorizontal();
             GUILayout.EndArea();
 
-            DrawFooter(new Rect(rect.x, rect.y + rect.height - FooterHeight, rect.width, FooterHeight));
+            DrawFooter(new Rect(rect.x, rect.y + rect.height - footerHeight, rect.width, footerHeight));
         }
 
         private void HandleMouseWheel(Rect rect, bool needsScrolling)
@@ -145,9 +151,24 @@ namespace RuntimeChangesSaver.Editor.OverrideComparePopup
 
             bool hasUnsavedChanges = Application.isPlaying && interactionHelper.HasUnsavedChanges();
             bool hasSavedEntry = interactionHelper.HasSavedEntry();
+            bool persistMaterials = ChangesTrackerCore.ShouldPersistMaterialChanges();
+            bool showMaterialToggle = ShouldShowMaterialToggle();
             
             GUILayout.BeginVertical();
             OverrideComparePopupUI.DrawFooter(rect, hasUnsavedChanges);
+            GUILayout.Space(2);
+            if (showMaterialToggle)
+            {
+                GUILayout.BeginHorizontal();
+                if (showMaterialToggle)
+                {
+                    bool newPersistMaterials = GUILayout.Toggle(persistMaterials, "Persist Material changes", GUILayout.Width(180f));
+                    if (newPersistMaterials != persistMaterials)
+                        ChangesTrackerCore.SetPersistMaterialChanges(newPersistMaterials);
+                }
+                GUILayout.FlexibleSpace();
+                GUILayout.EndHorizontal();
+            }
             GUILayout.EndVertical();
 
             GUILayout.FlexibleSpace();
@@ -205,6 +226,14 @@ namespace RuntimeChangesSaver.Editor.OverrideComparePopup
             if (leftEditor) Object.DestroyImmediate(leftEditor);
             if (rightEditor) Object.DestroyImmediate(rightEditor);
             snapshotHelper?.Cleanup();
+        }
+
+        private bool ShouldShowMaterialToggle()
+        {
+            if (liveComponent is Renderer renderer)
+                return ChangesTrackerCore.HasMaterialDelta(renderer);
+
+            return false;
         }
     }
 }

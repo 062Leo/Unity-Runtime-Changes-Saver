@@ -211,6 +211,11 @@ namespace RuntimeChangesSaver.Editor.OverrideComparePopup
                 }
 
                 so.ApplyModifiedPropertiesWithoutUndo();
+
+                if (SnapshotComponent is Renderer renderer && snapshot.materialGuids is { Count: > 0 })
+                {
+                    ApplyMaterials(renderer, snapshot.materialGuids);
+                }
             }
         }
 
@@ -279,6 +284,11 @@ namespace RuntimeChangesSaver.Editor.OverrideComparePopup
             }
 
             so.ApplyModifiedPropertiesWithoutUndo();
+
+            if (SnapshotComponent is Renderer renderer && match.includeMaterialChanges && match.materialGuids is { Count: > 0 })
+            {
+                ApplyMaterials(renderer, match.materialGuids);
+            }
         }
 
         private void ApplyComponentOriginalToSnapshot(ComponentOriginalStore.ComponentOriginal match)
@@ -306,12 +316,50 @@ namespace RuntimeChangesSaver.Editor.OverrideComparePopup
             }
 
             so.ApplyModifiedPropertiesWithoutUndo();
+
+            if (SnapshotComponent is Renderer renderer && match.materialGuids is { Count: > 0 })
+            {
+                ApplyMaterials(renderer, match.materialGuids);
+            }
         }
 
         public void Cleanup()
         {
             if (SnapshotGO)
                 Object.DestroyImmediate(SnapshotGO);
+        }
+
+        private static void ApplyMaterials(Renderer renderer, System.Collections.Generic.List<string> materialGuids)
+        {
+            if (renderer == null || materialGuids == null || materialGuids.Count == 0)
+                return;
+
+            var current = renderer.sharedMaterials;
+            var applied = new Material[materialGuids.Count];
+
+            for (int i = 0; i < materialGuids.Count; i++)
+            {
+                string guid = materialGuids[i];
+                if (string.IsNullOrEmpty(guid))
+                {
+                    applied[i] = null;
+                    continue;
+                }
+
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                var mat = AssetDatabase.LoadAssetAtPath<Material>(path);
+                if (mat == null && i < current.Length)
+                {
+                    applied[i] = current[i];
+                    Debug.LogWarning($"[RCS][Snapshot] Material GUID '{guid}' could not be resolved for renderer '{renderer.name}'");
+                }
+                else
+                {
+                    applied[i] = mat;
+                }
+            }
+
+            renderer.sharedMaterials = applied;
         }
     }
 }

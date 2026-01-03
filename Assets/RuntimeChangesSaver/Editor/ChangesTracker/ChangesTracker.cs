@@ -16,6 +16,8 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker
     public static class ChangesTrackerCore
     {
         private const string PREFS_KEY = "PlayModeChangesTracker_CaptureNeeded";
+        private const string PREF_PERSIST_NAME = "RCS_PersistNameChanges";
+        private const string PREF_PERSIST_MATERIALS = "RCS_PersistMaterialChanges";
         private static string startScenePathAtPlayEnter;
         private static readonly Dictionary<string, HashSet<string>> selectedProperties = new();
 
@@ -98,7 +100,9 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker
                     if (change.modifiedProperties is { Count: > 0 })
                     {
                         foreach (var prop in change.modifiedProperties)
+                        {
                             ApplyPropertyToTransform(t, rt, change, prop);
+                        }
                     }
                     else
                     {
@@ -165,6 +169,11 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker
                     }
 
                     so.ApplyModifiedPropertiesWithoutUndo();
+
+                    if (change.includeMaterialChanges && comp is Renderer renderer)
+                    {
+                        ApplyMaterials(renderer, change.materialGuids);
+                    }
                 }
             }
         }
@@ -229,6 +238,12 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker
             RecordTransformChangeToStore(go, original, current);
         }
 
+        public static void AcceptNameChanges(GameObject go)
+        {
+            if (go == null) return;
+            RecordNameChangeToStore(go);
+        }
+
         public static void AcceptComponentChanges(Component comp)
         {
             if (comp == null) return;
@@ -269,6 +284,58 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker
         public static void ResetComponentBaseline(Component comp)
         {
             SnapshotManager.ResetComponentBaseline(comp);
+        }
+
+        public static bool HasNameDelta(GameObject go)
+        {
+            if (go == null) return false;
+            var original = SnapshotManager.GetNameSnapshot(go);
+            if (original == null) return false;
+            return !string.Equals(original.objectName, go.name, StringComparison.Ordinal);
+        }
+
+        public static bool HasMaterialDelta(Renderer renderer)
+        {
+            if (renderer == null) return false;
+
+            var go = renderer.gameObject;
+            string compKey = GetComponentKey(renderer);
+            var snapshot = SnapshotManager.GetComponentSnapshot(go, compKey);
+            if (snapshot == null) return false;
+
+            var current = GetRendererMaterialGuids(renderer);
+            var original = snapshot.materialGuids ?? new List<string>();
+
+            if (current.Count != original.Count)
+                return true;
+
+            for (int i = 0; i < current.Count; i++)
+            {
+                if (!string.Equals(current[i], original[i], StringComparison.Ordinal))
+                    return true;
+            }
+
+            return false;
+        }
+
+        public static bool ShouldPersistNameChanges()
+        {
+            return true;
+        }
+
+        public static void SetPersistNameChanges(bool value)
+        {
+            // no-op; name persistence is always enabled
+        }
+
+        public static bool ShouldPersistMaterialChanges()
+        {
+            return EditorPrefs.GetBool(PREF_PERSIST_MATERIALS, false);
+        }
+
+        public static void SetPersistMaterialChanges(bool value)
+        {
+            EditorPrefs.SetBool(PREF_PERSIST_MATERIALS, value);
         }
 
         public static void RevertAll(GameObject go)
@@ -333,25 +400,35 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker
             var componentOriginalStore = ComponentOriginalStore.LoadExisting();
             if (componentOriginalStore != null)
                 componentOriginalStore.Clear();
+
+            var nameStore = GameObjectNameChangesStore.LoadExisting();
+            if (nameStore != null)
+                nameStore.Clear();
+
+            var nameOriginalStore = GameObjectNameOriginalStore.LoadExisting();
+            if (nameOriginalStore != null)
+                nameOriginalStore.Clear();
         }
 
         private static void RecordTransformChangeToStore(GameObject go, TransformSnapshot original, TransformSnapshot current)
         {
             var store = TransformChangesStore.LoadOrCreate();
             TransformOriginalStore originalStore = null;
-            bool originalStored = false;
 
             string scenePath = go.scene.path;
             string objectPath = SceneAndPathUtilities.GetGameObjectPath(go.transform);
-            string globalObjectId = current.globalObjectId; // Capture GUID from snapshot
+            string globalObjectId = current.globalObjectId;
 
             List<string> modifiedProps = original != null 
                 ? SnapshotManager.GetChangedProperties(original, current)
                 : new List<string> { "position", "rotation", "scale" };
+
             if (original != null)
             {
                 originalStore = TransformOriginalStore.LoadOrCreate();
-                int originalIndex = originalStore.entries.FindIndex(e => e.scenePath == scenePath && e.objectPath == objectPath);
+                int originalIndex = originalStore.entries.FindIndex(e =>
+                    (!string.IsNullOrEmpty(e.globalObjectId) && e.globalObjectId == globalObjectId) ||
+                    (string.IsNullOrEmpty(e.globalObjectId) && e.scenePath == scenePath && e.objectPath == objectPath));
 
                 if (originalIndex < 0)
                 {
@@ -359,7 +436,7 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker
                     {
                         scenePath = scenePath,
                         objectPath = objectPath,
-                        globalObjectId = original.globalObjectId, // Store GUID from original snapshot
+                        globalObjectId = original.globalObjectId,
                         isRectTransform = original.isRectTransform,
                         position = original.position,
                         rotation = original.rotation,
@@ -376,7 +453,6 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker
 
                     originalStore.entries.Add(entry);
                     EditorUtility.SetDirty(originalStore);
-                    originalStored = true;
                 }
             }
 
@@ -384,7 +460,7 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker
             {
                 scenePath = scenePath,
                 objectPath = objectPath,
-                globalObjectId = globalObjectId, // Store GUID in change record
+                globalObjectId = globalObjectId,
                 isRectTransform = current.isRectTransform,
                 position = current.position,
                 rotation = current.rotation,
@@ -400,14 +476,77 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker
                 modifiedProperties = modifiedProps
             };
 
-            var existingIndex = store.changes.FindIndex(c => c.scenePath == scenePath && c.objectPath == objectPath);
-            if (existingIndex >= 0)
-                store.changes[existingIndex] = change;
-            else
-                store.changes.Add(change);
+            var existingIndex = store.changes.FindIndex(c =>
+                (!string.IsNullOrEmpty(c.globalObjectId) && c.globalObjectId == globalObjectId) ||
+                (string.IsNullOrEmpty(c.globalObjectId) && c.scenePath == scenePath && c.objectPath == objectPath));
+            if (modifiedProps.Count > 0)
+            {
+                if (existingIndex >= 0)
+                    store.changes[existingIndex] = change;
+                else
+                    store.changes.Add(change);
+            }
+            else if (existingIndex >= 0)
+            {
+                store.changes.RemoveAt(existingIndex);
+            }
 
             EditorUtility.SetDirty(store);
             AssetDatabase.SaveAssets();
+        }
+
+        private static void RecordNameChangeToStore(GameObject go)
+        {
+            var nameStore = GameObjectNameChangesStore.LoadOrCreate();
+            var nameOriginalStore = GameObjectNameOriginalStore.LoadOrCreate();
+
+            var original = SnapshotManager.GetNameSnapshot(go);
+            if (original == null) return;
+
+            string scenePath = go.scene.path;
+            string objectPath = SceneAndPathUtilities.GetGameObjectPath(go.transform);
+            string globalObjectId = GlobalObjectId.GetGlobalObjectIdSlow(go).ToString();
+            string newName = go.name;
+
+            // Store original if not already stored
+            int originalIndex = nameOriginalStore.entries.FindIndex(e =>
+                (!string.IsNullOrEmpty(e.globalObjectId) && e.globalObjectId == globalObjectId) ||
+                (string.IsNullOrEmpty(e.globalObjectId) && e.scenePath == scenePath && e.objectPath == objectPath));
+            if (originalIndex < 0)
+            {
+                var entry = new GameObjectNameOriginalStore.NameOriginal
+                {
+                    scenePath = scenePath,
+                    objectPath = objectPath,
+                    globalObjectId = original.globalObjectId,
+                    originalName = original.objectName
+                };
+                nameOriginalStore.entries.Add(entry);
+                EditorUtility.SetDirty(nameOriginalStore);
+            }
+
+            // Store change
+            var change = new GameObjectNameChangesStore.NameChange
+            {
+                scenePath = scenePath,
+                objectPath = objectPath,
+                globalObjectId = globalObjectId,
+                newName = newName
+            };
+
+            var existingIndex = nameStore.changes.FindIndex(c =>
+                (!string.IsNullOrEmpty(c.globalObjectId) && c.globalObjectId == globalObjectId) ||
+                (string.IsNullOrEmpty(c.globalObjectId) && c.scenePath == scenePath && c.objectPath == objectPath));
+            if (existingIndex >= 0)
+                nameStore.changes[existingIndex] = change;
+            else
+                nameStore.changes.Add(change);
+
+            EditorUtility.SetDirty(nameStore);
+            AssetDatabase.SaveAssets();
+
+            // Update baseline
+            SnapshotManager.SetNameSnapshot(go, new GameObjectNameSnapshot(go));
         }
 
         private static void RecordComponentChangeToStore(Component comp, ComponentSnapshot originalSnapshot)
@@ -428,6 +567,9 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker
             var propertyPaths = new List<string>();
             var values = new List<string>();
             var typeNames = new List<string>();
+
+            bool includeMaterialChanges = ShouldPersistMaterialChanges() && comp is Renderer;
+            List<string> materialGuids = includeMaterialChanges ? GetRendererMaterialGuids(comp as Renderer) : new List<string>();
 
             bool enterChildren = true;
             while (prop.NextVisible(enterChildren))
@@ -482,7 +624,8 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker
                         componentIndex = index,
                         propertyPaths = new List<string>(propertyPaths),
                         serializedValues = originalValues,
-                        valueTypes = originalTypes
+                        valueTypes = originalTypes,
+                        materialGuids = includeMaterialChanges ? new List<string>(originalSnapshot.materialGuids ?? new List<string>()) : new List<string>()
                     };
 
                     originalStore.entries.Add(originalEntry);
@@ -500,7 +643,9 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker
                 componentIndex = index,
                 propertyPaths = propertyPaths,
                 serializedValues = values,
-                valueTypes = typeNames
+                valueTypes = typeNames,
+                includeMaterialChanges = includeMaterialChanges,
+                materialGuids = materialGuids
             };
 
             if (existing >= 0)
@@ -528,6 +673,62 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker
                 case "offsetMin": if (rt) rt.offsetMin = change.offsetMin; break;
                 case "offsetMax": if (rt) rt.offsetMax = change.offsetMax; break;
             }
+        }
+
+        public static List<string> GetRendererMaterialGuids(Renderer renderer)
+        {
+            var guids = new List<string>();
+            if (renderer == null)
+                return guids;
+
+            var materials = renderer.sharedMaterials;
+            foreach (var mat in materials)
+            {
+                if (mat == null)
+                {
+                    guids.Add(string.Empty);
+                    continue;
+                }
+
+                string path = AssetDatabase.GetAssetPath(mat);
+                string guid = string.IsNullOrEmpty(path) ? string.Empty : AssetDatabase.AssetPathToGUID(path);
+                guids.Add(guid);
+            }
+
+            return guids;
+        }
+
+        private static void ApplyMaterials(Renderer renderer, List<string> materialGuids)
+        {
+            if (renderer == null || materialGuids == null || materialGuids.Count == 0)
+                return;
+
+            var current = renderer.sharedMaterials;
+            var applied = new Material[materialGuids.Count];
+
+            for (int i = 0; i < materialGuids.Count; i++)
+            {
+                string guid = materialGuids[i];
+                if (string.IsNullOrEmpty(guid))
+                {
+                    applied[i] = null;
+                    continue;
+                }
+
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                var mat = AssetDatabase.LoadAssetAtPath<Material>(path);
+                if (mat == null && i < current.Length)
+                {
+                    applied[i] = current[i];
+                    Debug.LogWarning($"[RCS][Apply][Component] Material GUID '{guid}' could not be resolved for renderer '{renderer.name}'");
+                }
+                else
+                {
+                    applied[i] = mat;
+                }
+            }
+
+            renderer.sharedMaterials = applied;
         }
     }
 }

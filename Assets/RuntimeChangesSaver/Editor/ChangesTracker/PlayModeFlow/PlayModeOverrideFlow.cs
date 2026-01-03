@@ -24,11 +24,13 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker.PlayModeFlow
 
             var transformStore = TransformChangesStore.LoadExisting();
             var compStore = ComponentChangesStore.LoadExisting();
+            var nameStore = GameObjectNameChangesStore.LoadExisting();
 
             bool hasTransformChanges = transformStore != null && transformStore.changes.Count > 0;
             bool hasComponentChanges = compStore != null && compStore.changes.Count > 0;
+            bool hasNameChanges = nameStore != null && nameStore.changes.Count > 0;
 
-            if (!hasTransformChanges && !hasComponentChanges) return;
+            if (!hasTransformChanges && !hasComponentChanges && !hasNameChanges) return;
 
             isProcessingPlayExitPopups = true;
 
@@ -43,6 +45,10 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker.PlayModeFlow
                 foreach (var c in compStore.changes) 
                     allScenePaths.Add(SceneAndPathUtilities.NormalizeScenePath(c.scenePath));
 
+            if (hasNameChanges)
+                foreach (var c in nameStore.changes)
+                    allScenePaths.Add(SceneAndPathUtilities.NormalizeScenePath(c.scenePath));
+
             var startScene = SceneManager.GetActiveScene();
             string startScenePath = startScene.IsValid() ? SceneAndPathUtilities.NormalizeScenePath(startScene.path) : null;
 
@@ -55,7 +61,7 @@ namespace RuntimeChangesSaver.Editor.ChangesTracker.PlayModeFlow
 
             Debug.Log($"[PlayOverrides][HandleApplyChangesFromStoreOnPlayExit] startScenePath='{startScenePath}', orderedScenePaths=[{string.Join(", ", orderedScenePaths)}]");
 
-            SceneApplyProcessor.ProcessNextSceneInQueue(orderedScenePaths, startScenePath, transformStore, compStore);
+            SceneApplyProcessor.ProcessNextSceneInQueue(orderedScenePaths, startScenePath, transformStore, compStore, nameStore);
         }
     }
 }

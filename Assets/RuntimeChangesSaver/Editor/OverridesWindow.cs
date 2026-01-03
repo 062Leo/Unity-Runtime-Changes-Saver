@@ -1,4 +1,5 @@
 ﻿﻿using System.Collections.Generic;
+using System.Linq;
 using UnityEditor;
 using UnityEngine;
 using RuntimeChangesSaver.Editor.ChangesTracker;
@@ -12,43 +13,52 @@ namespace RuntimeChangesSaver.Editor
         private readonly List<Component> changedComponents;
         private Vector2 scroll;
         private const float RowHeight = 22f;
-        private const float HeaderHeight = 28f;
+        private float headerHeight = 28f;
         private const float FooterHeight = 50f;
+
+        private readonly bool showMaterialToggle;
+        private readonly bool hasNameDelta;
 
         public OverridesWindow(GameObject go)
         {
             targetGO = go;
             changedComponents = ChangesTrackerCore.GetChangedComponents(go);
+
+            hasNameDelta = ChangesTrackerCore.HasNameDelta(go);
+            showMaterialToggle = changedComponents.Any(c => c is Renderer r && ChangesTrackerCore.HasMaterialDelta(r));
+
+            if (showMaterialToggle) headerHeight += 18f;
         }
 
         public override Vector2 GetWindowSize()
         {
-            int count = Mathf.Max(1, changedComponents.Count);
+            int rowCount = changedComponents.Count + (hasNameDelta ? 1 : 0);
+            int count = Mathf.Max(1, rowCount);
             float listHeight = count * RowHeight;
-            float totalHeight = HeaderHeight + listHeight + FooterHeight + 10;
+            float totalHeight = headerHeight + listHeight + FooterHeight + 10;
             return new Vector2(320, Mathf.Min(500, totalHeight));
         }
 
         public override void OnGUI(Rect rect)
         {
             // Layout
-            Rect headerRect = new Rect(rect.x, rect.y, rect.width, HeaderHeight);
+            Rect headerRect = new Rect(rect.x, rect.y, rect.width, headerHeight);
             DrawHeader(headerRect);
 
-            if (changedComponents.Count == 0)
+            if (changedComponents.Count == 0 && !hasNameDelta)
             {
-                Rect helpRect = new Rect(rect.x + 10, rect.y + HeaderHeight, rect.width - 20, 40);
+                Rect helpRect = new Rect(rect.x + 10, rect.y + headerHeight, rect.width - 20, 40);
                 GUI.Label(helpRect, "No changed components", EditorStyles.helpBox);
                 return;
             }
 
             // List
-            float listHeight = rect.height - HeaderHeight - FooterHeight;
-            Rect listRect = new Rect(rect.x, rect.y + HeaderHeight, rect.width, listHeight);
+            float listHeight = rect.height - headerHeight - FooterHeight;
+            Rect listRect = new Rect(rect.x, rect.y + headerHeight, rect.width, listHeight);
             DrawComponentList(listRect);
 
             // Footer
-            Rect footerRect = new Rect(rect.x, rect.y + HeaderHeight + listHeight, rect.width, FooterHeight);
+            Rect footerRect = new Rect(rect.x, rect.y + headerHeight + listHeight, rect.width, FooterHeight);
             DrawFooter(footerRect);
         }
 
@@ -59,20 +69,52 @@ namespace RuntimeChangesSaver.Editor
                 "Play Mode Overrides",
                 EditorStyles.boldLabel
             );
+
+            float y = rect.y + 26f;
+
+            if (showMaterialToggle)
+            {
+                bool persistMaterials = ChangesTrackerCore.ShouldPersistMaterialChanges();
+                bool newPersistMaterials = GUI.Toggle(new Rect(rect.x + 6, y, rect.width - 12, 18), persistMaterials, "Persist Renderer material assignments");
+                if (newPersistMaterials != persistMaterials)
+                {
+                    ChangesTrackerCore.SetPersistMaterialChanges(newPersistMaterials);
+                }
+            }
         }
 
         void DrawComponentList(Rect rect)
         {
-            Rect viewRect = new Rect(0, 0, rect.width - 16, changedComponents.Count * RowHeight);
+            int rowCount = changedComponents.Count + (hasNameDelta ? 1 : 0);
+            Rect viewRect = new Rect(0, 0, rect.width - 16, rowCount * RowHeight);
             scroll = GUI.BeginScrollView(rect, scroll, viewRect);
+
+            float y = 0f;
+
+            if (hasNameDelta)
+            {
+                Rect nameRow = new Rect(0, y, viewRect.width, RowHeight);
+                DrawNameRow(nameRow);
+                y += RowHeight;
+            }
 
             for (int i = 0; i < changedComponents.Count; i++)
             {
-                Rect row = new Rect(0, i * RowHeight, viewRect.width, RowHeight);
+                Rect row = new Rect(0, y, viewRect.width, RowHeight);
                 DrawRow(row, changedComponents[i]);
+                y += RowHeight;
             }
 
             GUI.EndScrollView();
+        }
+
+        void DrawNameRow(Rect rowRect)
+        {
+            if (Event.current.type == EventType.Repaint)
+                EditorStyles.helpBox.Draw(rowRect, false, false, false, false);
+
+            var labelRect = new Rect(rowRect.x + 6, rowRect.y + 3, rowRect.width - 12, 16);
+            GUI.Label(labelRect, "GameObject Name", EditorStyles.label);
         }
 
         void DrawRow(Rect rowRect, Component component)
@@ -145,6 +187,7 @@ namespace RuntimeChangesSaver.Editor
                 scenePath = targetGO.scene.name;
 
             string objectPath = OverrideComparePopupUtilities.GetGameObjectPath(targetGO.transform);
+            string targetGuid = GlobalObjectId.GetGlobalObjectIdSlow(targetGO).ToString();
 
             var tStore = TransformChangesStore.LoadExisting();
             var cStore = ComponentChangesStore.LoadExisting();
@@ -152,10 +195,14 @@ namespace RuntimeChangesSaver.Editor
             var originalComponentStore = ComponentOriginalStore.LoadExisting();
 
             bool transformListed = changedComponents.Contains(targetGO.transform);
+            bool nameOnly = !transformListed && hasNameDelta;
+            
             if (transformListed)
             {
                 bool reverted = false;
-                var originalTransform = originalTransformStore?.entries.Find(e => e.scenePath == scenePath && e.objectPath == objectPath);
+                var originalTransform = originalTransformStore?.entries.Find(e =>
+                    (!string.IsNullOrEmpty(e.globalObjectId) && e.globalObjectId == targetGuid) ||
+                    (string.IsNullOrEmpty(e.globalObjectId) && e.scenePath == scenePath && e.objectPath == objectPath));
 
                 if (originalTransform != null)
                 {
@@ -207,6 +254,35 @@ namespace RuntimeChangesSaver.Editor
                 }
             }
 
+            // Revert name changes only if there is a name delta
+            if (hasNameDelta)
+            {
+                var nameOriginalStore = GameObjectNameOriginalStore.LoadExisting();
+                var originalName = nameOriginalStore?.entries.Find(e =>
+                    (!string.IsNullOrEmpty(e.globalObjectId) && e.globalObjectId == targetGuid) ||
+                    (string.IsNullOrEmpty(e.globalObjectId) && e.scenePath == scenePath && e.objectPath == objectPath));
+
+                if (originalName != null && !string.IsNullOrEmpty(originalName.originalName))
+                {
+                    targetGO.name = originalName.originalName;
+                }
+                else
+                {
+                    // Fallback for unsaved name changes: use play-enter snapshot
+                    var originalNameSnapshot = SnapshotManager.GetNameSnapshot(targetGO);
+                    if (originalNameSnapshot != null && !string.IsNullOrEmpty(originalNameSnapshot.objectName))
+                    {
+                        targetGO.name = originalNameSnapshot.objectName;
+                    }
+                }
+
+                // Reset name baseline so HasNameDelta clears and buttons disable correctly
+                SnapshotManager.SetNameSnapshot(targetGO, new GameObjectNameSnapshot(targetGO));
+            }
+
+            // Reset transform baseline after revert so the object is no longer flagged as changed
+            SnapshotManager.ResetTransformBaseline(targetGO);
+
             foreach (var comp in changedComponents)
             {
                 if (comp is Transform) continue;
@@ -238,6 +314,11 @@ namespace RuntimeChangesSaver.Editor
                         }
                     }
                     targetSO.ApplyModifiedProperties();
+
+                    if (comp is Renderer renderer && originalEntry.materialGuids is { Count: > 0 })
+                    {
+                        ApplyMaterials(renderer, originalEntry.materialGuids);
+                    }
                     reverted = true;
                 }
 
@@ -248,17 +329,40 @@ namespace RuntimeChangesSaver.Editor
                     if (snapshot != null)
                     {
                         RevertComponent(comp, snapshot);
+                        if (comp is Renderer renderer && snapshot.materialGuids is { Count: > 0 })
+                        {
+                            ApplyMaterials(renderer, snapshot.materialGuids);
+                        }
                     }
                 }
             }
 
-            if (transformListed && tStore != null)
+            if ((transformListed || nameOnly) && tStore != null)
             {
-                int removeIndex = tStore.changes.FindIndex(c => c.scenePath == scenePath && c.objectPath == objectPath);
+                int removeIndex = tStore.changes.FindIndex(c =>
+                    (!string.IsNullOrEmpty(c.globalObjectId) && c.globalObjectId == targetGuid) ||
+                    (string.IsNullOrEmpty(c.globalObjectId) && c.scenePath == scenePath && c.objectPath == objectPath));
                 if (removeIndex >= 0)
                 {
                     tStore.changes.RemoveAt(removeIndex);
                     EditorUtility.SetDirty(tStore);
+                }
+            }
+
+            // Remove name changes from store only when name delta was present
+            if (hasNameDelta)
+            {
+                var nameStore = GameObjectNameChangesStore.LoadExisting();
+                if (nameStore != null)
+                {
+                    int removeIndex = nameStore.changes.FindIndex(c =>
+                        (!string.IsNullOrEmpty(c.globalObjectId) && c.globalObjectId == targetGuid) ||
+                        (string.IsNullOrEmpty(c.globalObjectId) && c.scenePath == scenePath && c.objectPath == objectPath));
+                    if (removeIndex >= 0)
+                    {
+                        nameStore.changes.RemoveAt(removeIndex);
+                        EditorUtility.SetDirty(nameStore);
+                    }
                 }
             }
 
@@ -302,6 +406,7 @@ namespace RuntimeChangesSaver.Editor
             string targetGuid = GlobalObjectId.GetGlobalObjectIdSlow(targetGO).ToString();
 
             bool transformListed = changedComponents.Contains(targetGO.transform);
+            bool nameOnly = !transformListed && hasNameDelta;
 
             // Revert Transform
             var tStore = TransformChangesStore.LoadExisting();
@@ -331,12 +436,29 @@ namespace RuntimeChangesSaver.Editor
                         rt.offsetMin = storedChange.offsetMin;
                         rt.offsetMax = storedChange.offsetMax;
                     }
-
-                    // remove store entry after revert
-                    tStore.changes.RemoveAt(index);
-                    EditorUtility.SetDirty(tStore);
                 }
             }
+
+            // Revert name only when name delta exists
+            if (hasNameDelta)
+            {
+                var nameStore = GameObjectNameChangesStore.LoadExisting();
+                if (nameStore != null)
+                {
+                    int index = nameStore.changes.FindIndex(c =>
+                        (!string.IsNullOrEmpty(c.globalObjectId) && c.globalObjectId == targetGuid) ||
+                        (string.IsNullOrEmpty(c.globalObjectId) && c.scenePath == scenePath && c.objectPath == objectPath));
+                    if (index >= 0)
+                    {
+                        var storedChange = nameStore.changes[index];
+                        targetGO.name = storedChange.newName;
+                    }
+                }
+            }
+
+            // Reset baselines so the object is no longer flagged as changed
+            SnapshotManager.ResetTransformBaseline(targetGO);
+            SnapshotManager.SetNameSnapshot(targetGO, new GameObjectNameSnapshot(targetGO));
 
             // Revert other components
             var cStore = ComponentChangesStore.LoadExisting();
@@ -376,9 +498,11 @@ namespace RuntimeChangesSaver.Editor
 
                         targetSO.ApplyModifiedProperties();
 
-                        // remove store entry after revert
-                        cStore.changes.RemoveAt(index);
-                        EditorUtility.SetDirty(cStore);
+                        if (storedChange.includeMaterialChanges && comp is Renderer renderer)
+                        {
+                            ApplyMaterials(renderer, storedChange.materialGuids);
+                        }
+
                     }
                 }
             }
@@ -393,14 +517,27 @@ namespace RuntimeChangesSaver.Editor
                 scenePath = targetGO.scene.name;
 
             string objectPath = OverrideComparePopupUtilities.GetGameObjectPath(targetGO.transform);
+            string targetGuid = GlobalObjectId.GetGlobalObjectIdSlow(targetGO).ToString();
 
             bool transformListed = changedComponents.Contains(targetGO.transform);
+            bool nameOnly = !transformListed && hasNameDelta;
 
             // Transform saved?
             var tStore = TransformChangesStore.LoadExisting();
             if (transformListed && tStore != null)
             {
                 int index = tStore.changes.FindIndex(c => c.scenePath == scenePath && c.objectPath == objectPath);
+                if (index >= 0)
+                    return true;
+            }
+
+            // Name saved? (always check, even if no current name delta)
+            var nameStore = GameObjectNameChangesStore.LoadExisting();
+            if (nameStore != null)
+            {
+                int index = nameStore.changes.FindIndex(c =>
+                    (!string.IsNullOrEmpty(c.globalObjectId) && c.globalObjectId == targetGuid) ||
+                    (string.IsNullOrEmpty(c.globalObjectId) && c.scenePath == scenePath && c.objectPath == objectPath));
                 if (index >= 0)
                     return true;
             }
@@ -435,19 +572,16 @@ namespace RuntimeChangesSaver.Editor
         void ApplyAllChanges()
         {
             // Accept changes
-            bool hasTransformChange = false;
-            foreach (var comp in changedComponents)
-            {
-                if (comp is Transform or RectTransform)
-                {
-                    hasTransformChange = true;
-                    break;
-                }
-            }
-
+            bool hasTransformChange = changedComponents.Any(comp => comp is Transform or RectTransform);
+            
             if (hasTransformChange)
             {
                 ChangesTrackerCore.AcceptTransformChanges(targetGO);
+            }
+
+            if (hasNameDelta)
+            {
+                ChangesTrackerCore.AcceptNameChanges(targetGO);
             }
 
             // Non-transform acceptance
@@ -516,6 +650,39 @@ namespace RuntimeChangesSaver.Editor
         {
             changedComponents.Clear();
             changedComponents.AddRange(ChangesTrackerCore.GetChangedComponents(go));
+        }
+
+        private static void ApplyMaterials(Renderer renderer, List<string> materialGuids)
+        {
+            if (renderer == null || materialGuids == null || materialGuids.Count == 0)
+                return;
+
+            var current = renderer.sharedMaterials;
+            var applied = new Material[materialGuids.Count];
+
+            for (int i = 0; i < materialGuids.Count; i++)
+            {
+                string guid = materialGuids[i];
+                if (string.IsNullOrEmpty(guid))
+                {
+                    applied[i] = null;
+                    continue;
+                }
+
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                var mat = AssetDatabase.LoadAssetAtPath<Material>(path);
+                if (mat == null && i < current.Length)
+                {
+                    applied[i] = current[i];
+                    Debug.LogWarning($"[RCS][Revert] Material GUID '{guid}' could not be resolved for renderer '{renderer.name}'");
+                }
+                else
+                {
+                    applied[i] = mat;
+                }
+            }
+
+            renderer.sharedMaterials = applied;
         }
     }
 }

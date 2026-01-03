@@ -10,6 +10,7 @@ namespace RuntimeChangesSaver.Editor
     {
         public string componentType; 
         public string globalObjectId;
+        public List<string> materialGuids = new List<string>();
         public Dictionary<string, object> properties = new Dictionary<string, object>();
 
         public ComponentSnapshot() { }
